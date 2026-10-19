@@ -1,0 +1,10 @@
+.git
+.venv
+.upstream
+**/__pycache__
+.pytest_cache
+.ruff_cache
+runtime
+videos
+teaser.png
+integration/figma-plugin/node_modules

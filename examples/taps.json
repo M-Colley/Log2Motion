@@ -1,0 +1,5 @@
+[
+  {"time": [], "yx_touch": [0.5, 0.5], "yx_lift": [0.5, 0.5], "action_type": "ActionType.DUAL_POINT"},
+  {"time": [], "yx_touch": [0.3, 0.4], "yx_lift": [0.3, 0.4], "action_type": "ActionType.DUAL_POINT"},
+  {"time": [], "yx_touch": [0.5, 0.5], "yx_lift": [0.5, 0.5], "action_type": "ActionType.DUAL_POINT"}
+]

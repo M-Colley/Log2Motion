@@ -3,21 +3,25 @@ import json
 import os
 from copy import deepcopy
 from typing import List, Tuple
-from android_env.components.simulators.emulator import emulator_simulator
-from myosuite.utils import gym;
-from myosuite_custom.base_v0_custom import BaseV0Custom
-from myosuite_custom.muscle_effort_model import MuscleEffortModel
+from pathlib import Path
+import gymnasium as gym
+from .myosuite_custom.base_v0_custom import BaseV0Custom
+from .myosuite_custom.muscle_effort_model import MuscleEffortModel
 
 register = gym.register
 import collections
 import numpy as np
 import mujoco
+from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
 
 
 class Log2MotionEnv(BaseV0Custom):
     def __init__(self, env_config=None, obsd_model_path=None, seed=42):
+        env_config = dict(env_config or {})
+        root = Path(__file__).resolve().parent
+        env_config.setdefault('model_path', str(root / 'scene' / 'log2motion_scene.xml'))
         self.contact_counter = 0
         self.last_swipe = False
         self.last_contact = False
@@ -41,7 +45,7 @@ class Log2MotionEnv(BaseV0Custom):
         self.rng = np.random.default_rng(seed)
 
         self.grid = None
-        self.grid_path = env_config.get('grid_path', 'environment/button_placement.json')
+        self.grid_path = env_config.get('grid_path', str(root / 'button_placement.json'))
         self.start_qpos_data = {
             'return_qpos_button': [-0.0387, 0.0163, -0.0164, 0.0387, -0.0079, 0.0633, 0.0287, -0.0285,
                                    -0.0634, 0.0079, 0.8679, 0.1598, -0.8679, 0.1706, 1.4994, 1.0111,
@@ -54,6 +58,7 @@ class Log2MotionEnv(BaseV0Custom):
         self.frame_skip_conf = env_config.get('frame_skip', 1)
 
         self.previous_action = None
+        self._elapsed_steps = 0
         self.solved_goal = False
         self.mistake_counter = 0
         self.mistake_counter_pos = {}
@@ -73,7 +78,8 @@ class Log2MotionEnv(BaseV0Custom):
 
         super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
 
-        self.sim.data.qpos = deepcopy(self.start_qpos_data['return_qpos_button'])
+        self.sim.data.qpos[:] = self.start_qpos_data['return_qpos_button']
+        self.sim.forward()
 
         self.touch_sensor_idx, self.touch_sensor_dim = self._find_touch_sensor_index(self.touch_sensor_name)
 
@@ -81,37 +87,37 @@ class Log2MotionEnv(BaseV0Custom):
             self.screen_touch_sensor_name)
 
         # add to contact height button height form the inner center of the phone
-        geo_size = copy.deepcopy(self.sim.model.geom_size[self.sim.model.geom_name2id(f"{'touch_area_1'}_geom")])
+        geo_size = copy.deepcopy(self.sim.model.geom_size[self.sim.model.geom(f"{'touch_area_1'}_geom").id])
         smartphone_geo_size = copy.deepcopy(
-            self.sim.model.geom_size[self.sim.model.geom_name2id('smartphone_geom')])
+            self.sim.model.geom_size[self.sim.model.geom('smartphone_geom').id])
         self.contact_height = env_config.get('contact_height', 0.0001) + geo_size[2]
         self.phone_surface_distance = env_config.get('phone_surface_distance', 0.001) + smartphone_geo_size[2]
         self.FINGER_TIP_QVEL_IDS = self._get_index_finger_ids_qvel()
         self.tendon_ids = {}
         for tendon_id in range(self.sim.model.ntendon):
-            tendon_name = self.sim.model.id2name(tendon_id, 'tendon')
+            tendon_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_TENDON, tendon_id)
             if tendon_name:
                 self.tendon_ids[tendon_name] = tendon_id
         self.target = {
             'touch_area_name': 'touch_area_1',
             'unique_button_name': 'start_button',
             'tendon_id': self.tendon_ids.get('IFtip_err_1', None),
-            'site_id': self.sim.model.site_name2id('touch_area_1'),
-            'geom_id': self.sim.model.geom_name2id('touch_area_1_geom'),
-            'position': copy.deepcopy(self.sim.data.site_xpos[self.sim.model.site_name2id('touch_area_1')]),
-            'geo_pos': copy.deepcopy(self.sim.data.geom_xpos[self.sim.model.geom_name2id("touch_area_1_geom")]),
+            'site_id': self.sim.model.site('touch_area_1').id,
+            'geom_id': self.sim.model.geom('touch_area_1_geom').id,
+            'position': copy.deepcopy(self.sim.data.site_xpos[self.sim.model.site('touch_area_1').id]),
+            'geo_pos': copy.deepcopy(self.sim.data.geom_xpos[self.sim.model.geom("touch_area_1_geom").id]),
             'geo_size': geo_size,
-            'smartphone_body_id': self.sim.model.body_name2id('smartphone'),
-            'smartphone_body_pos': copy.deepcopy(self.sim.data.body_xpos[self.sim.model.body_name2id("smartphone")]),
+            'smartphone_body_id': self.sim.model.body('smartphone').id,
+            'smartphone_body_pos': copy.deepcopy(self.sim.data.xpos[self.sim.model.body("smartphone").id]),
             'smartphone_pos_geo': copy.deepcopy(
-                self.sim.data.geom_xpos[self.sim.model.geom_name2id("smartphone_geom")]),
+                self.sim.data.geom_xpos[self.sim.model.geom("smartphone_geom").id]),
             # geometry postion of the screen
-            'smartphone_screen_geom_id': self.sim.model.geom_name2id('smartphone_geom'),
+            'smartphone_screen_geom_id': self.sim.model.geom('smartphone_geom').id,
             'smartphone_screen_geo_size': smartphone_geo_size,
             'contact_height': self.contact_height,
             'target_height_from_body_pos':
-                copy.deepcopy(self.sim.data.geom_xpos[self.sim.model.geom_name2id("touch_area_1_geom")])[2] -
-                copy.deepcopy(self.sim.data.body_xpos[self.sim.model.body_name2id("smartphone")])[2],
+                copy.deepcopy(self.sim.data.geom_xpos[self.sim.model.geom("touch_area_1_geom").id])[2] -
+                copy.deepcopy(self.sim.data.xpos[self.sim.model.body("smartphone").id])[2],
         }
 
         obs_key = ['qvel', 'act', 'distance_to_target', 'IFtip_pos_norm', 'contact_information',
@@ -125,7 +131,7 @@ class Log2MotionEnv(BaseV0Custom):
             weighted_reward_keys={
                 'bonus': 1.0
             },
-            muscle_condition="",
+            muscle_condition=self.muscle_condition,
             fatigue_reset_vec=self.fatigue_reset_vec,
             fatigue_reset_random=self.fatigue_reset_random,
             frame_skip=self.frame_skip_conf,
@@ -165,6 +171,8 @@ class Log2MotionEnv(BaseV0Custom):
           env: An Android instance.
         """
 
+        from android_env.components.simulators.emulator import emulator_simulator
+
         # Create simulator.
         return emulator_simulator.EmulatorSimulator(
             adb_controller_args=dict(
@@ -187,13 +195,13 @@ class Log2MotionEnv(BaseV0Custom):
         :param value: float, optional
             The new contact affinity value to assign to 'smartphone_geom'. Default is 0.0.
         """
-        if value != 1.0 or value != 1:
+        if value != 1:
             self.swipe = True
             self.last_swipe = True
         else:
             self.swipe = False
 
-        self.sim.model.geom_conaffinity[self.sim.model.geom_name2id('smartphone_geom')] = value
+        self.sim.model.geom_conaffinity[self.sim.model.geom('smartphone_geom').id] = value
 
     def _find_touch_sensor_index(self, touch_sensor_name):
         """
@@ -315,7 +323,7 @@ class Log2MotionEnv(BaseV0Custom):
         x_min, x_max = -0.1, 0.1
         y_min, y_max = -0.37, -0.12
         z_min, z_max = 1.0, 1.26
-        current_tip_position = sim.data.site_xpos[sim.model.site_name2id('IFtip')].copy().ravel()
+        current_tip_position = sim.data.site_xpos[sim.model.site('IFtip').id].copy().ravel()
         normalized_fingertip = np.array([
             normalize_centered(current_tip_position[0], x_min, x_max),
             normalize_centered(current_tip_position[1], y_min, y_max),
@@ -330,7 +338,7 @@ class Log2MotionEnv(BaseV0Custom):
         obs_dict['qpos'] = sim.data.qpos[:].copy()
         # actuator values
         obs_dict['act'] = sim.data.act[:].copy() if sim.model.na > 0 else np.zeros_like(obs_dict['qpos'])
-        obs_dict['IFtip_pos'] = sim.data.site_xpos[sim.model.site_name2id('IFtip')].copy()
+        obs_dict['IFtip_pos'] = sim.data.site_xpos[sim.model.site('IFtip').id].copy()
 
         obs_dict['IFtip_pos_norm'] = normalized_fingertip
         if self.muscle_condition == "fatigue":
@@ -356,7 +364,7 @@ class Log2MotionEnv(BaseV0Custom):
 
         obs_dict['current_target_position'] = normalized_current_target_position
         obs_dict['current_target_position_global'] = copy.deepcopy(
-            self.sim.data.site_xpos[self.sim.model.site_name2id('touch_area_1')])
+            self.sim.data.site_xpos[self.sim.model.site('touch_area_1').id])
         current_dist_to_touch = np.linalg.norm(current_tip_position - current_target_position)
         obs_dict['distance_to_target'] = np.array([current_dist_to_touch])
 
@@ -463,8 +471,7 @@ class Log2MotionEnv(BaseV0Custom):
 
         # Termination conditions
         done = (
-                obs_dict['time'] > self.MAX_TIME
-                or solved
+                solved
                 or self._done_if_outside_of_phone_geometry(obs_dict['IFtip_pos'])
         )
 
@@ -507,18 +514,23 @@ class Log2MotionEnv(BaseV0Custom):
             - Updates the texture in the simulation with the processed image data.
         """
         if self.use_android:
+            from PIL import Image
+
             self.image_data = self.and_instance.get_screenshot()
             # Rotate the image by 180 degrees
             self.image_data = np.rot90(self.image_data, 2)  # Rotating twice (90 + 90)
-            texture_id = self.sim.model.name2id("smartphone_texture", mujoco.mjtObj.mjOBJ_TEXTURE)
+            texture_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_TEXTURE, "smartphone_texture")
             tex_adr = self.sim.model.tex_adr[texture_id]
-            self.image_data.reshape((self.screen_resolution[0], self.screen_resolution[1], 3)).astype(np.uint8)
-
-            self.image_data = np.array(self.image_data).flatten()
+            width = int(self.model.tex_width[texture_id])
+            height = int(self.model.tex_height[texture_id])
+            channels = int(self.model.tex_nchannel[texture_id])
+            mode = 'RGBA' if channels == 4 else 'RGB'
+            self.image_data = np.asarray(Image.fromarray(self.image_data).convert(mode).resize((width, height)),
+                                         dtype=np.uint8).ravel()
             # Note: Ensure your `image_data` is a flat numpy array with correct dimensions
-            self.sim.model.tex_rgb[tex_adr:tex_adr + self.image_data.size] = self.image_data
+            self.sim.model.tex_data[tex_adr:tex_adr + self.image_data.size] = self.image_data
             self.sim.forward()
-            self.sim.renderer.upd_texture(texture_id, self.sim.data.ptr, window, self.sim.model)
+            self.sim.renderer.upd_texture(texture_id, self.sim.data, window, self.model)
 
     def call_screen(self, touches: List[Tuple[int, int, bool, int]]):
         """
@@ -568,6 +580,10 @@ class Log2MotionEnv(BaseV0Custom):
         return noisy_action
 
     def step(self, a, **kwargs):
+        a = np.asarray(a, dtype=np.float64)
+        if a.shape != self.action_space.shape or not np.isfinite(a).all():
+            raise ValueError(f"Expected finite action of shape {self.action_space.shape}")
+        self._elapsed_steps += 1
         a = self.apply_motor_noise(a.copy())
         if self.previous_action is None:
             self.previous_action = np.zeros(a.shape)
@@ -619,12 +635,12 @@ class Log2MotionEnv(BaseV0Custom):
 
         for idx in ind:
             a[idx] = mask_array[idx]
-        obs, rwd, done, smth, info = super().step(a, **kwargs)
-        info['mistake_counter_pos_dict'] = self.mistake_counter_pos
-        if done:
-            info['is_success'] = self.solved_goal
-            smth = self.solved_goal or self._swipe_goal
-        return obs, float(rwd), done, smth, info
+        obs, rwd, terminated, truncated, info = super().step(a, **kwargs)
+        timeout = self.data.time >= self.MAX_TIME or self._elapsed_steps >= self.max_timestep
+        info['mistake_counter_pos_dict'] = deepcopy(self.mistake_counter_pos)
+        info['is_success'] = bool(self.solved_goal or self._swipe_goal)
+        # Gymnasium's fourth value is truncation, with success in info.
+        return obs, float(rwd), bool(terminated), bool(timeout and not terminated), info
 
     def find_closest_button(self, grid, norm_x, norm_y):
         """
@@ -639,6 +655,8 @@ class Log2MotionEnv(BaseV0Custom):
         min_distance = float('inf')
 
         for button_name, data in grid.items():
+            if button_name in {'start_button', 'resting_position', 'resting_position2'}:
+                continue
             button_x, button_y = data['norm_position']
 
             # Calculate Euclidean distance
@@ -693,9 +711,16 @@ class Log2MotionEnv(BaseV0Custom):
         self.sim.model.geom_pos[geom1_index] = [x, y,
                                                 z]
 
-        self.sim.forward()
+        self._refresh_target_geometry()
         self.target['position'] = self.sim.data.site_xpos[
-            self.sim.model.site_name2id(self.target['touch_area_name'])]
+            self.sim.model.site(self.target['touch_area_name']).id]
+
+    def _refresh_target_geometry(self):
+        # MuJoCo 3 caches the body's collision BVH and geometry bounds.
+        # mj_forward alone leaves moved or resized touch buttons uncollidable.
+        body_id = int(self.model.geom_bodyid[self.target['geom_id']])
+        refresh_geom_derived_fields(self.model, self._model_spec, [body_id])
+        self.sim.forward()
 
     def _move_buttons_grid(self, button_target_name=None):
         """
@@ -725,7 +750,6 @@ class Log2MotionEnv(BaseV0Custom):
         if self.grid is None:
             # Load grid from file
             self.grid = load_grid_from_file(self.grid_path)
-            return
         if button_target_name is not None:
             selected_name = button_target_name
             x_center_variation, y_center_variation = self.grid[selected_name]['position']
@@ -743,9 +767,9 @@ class Log2MotionEnv(BaseV0Custom):
                 self.sim.model.geom_pos[geom1_index] = [x_center_variation, y_center_variation,
                                                         self.target['target_height_from_body_pos']]
 
-            self.sim.forward()
+            self._refresh_target_geometry()
             self.target['position'] = self.sim.data.site_xpos[
-                self.sim.model.site_name2id(self.target['touch_area_name'])]
+                self.sim.model.site(self.target['touch_area_name']).id]
             # Assign the button's unique name to the target
             self.target['unique_button_name'] = selected_name
 
@@ -769,7 +793,7 @@ class Log2MotionEnv(BaseV0Custom):
         y_max = self.target['smartphone_screen_geo_size'][1] + y_center
 
         # Normalize
-        norm_x = np.abs((x - x_max) / (x_max - x_min))  # left → right
+        norm_x = (x_max - x) / (x_max - x_min)  # left → right
         norm_y = (y - y_min) / (y_max - y_min)  # bottom → top
         # Clip to valid range [0,1]
         norm_x = np.clip(norm_x, 0, 1)
@@ -801,7 +825,7 @@ class Log2MotionEnv(BaseV0Custom):
         """
         Return a list of joint names according to the index ID of the joint angles
         """
-        return [self.sim.model.joint(jnt_id).name for jnt_id in range(1, self.sim.model.njnt)]
+        return [self.sim.model.joint(jnt_id).name for jnt_id in range(self.sim.model.njnt)]
 
     def _get_index_finger_ids_qvel(self):
         # List of joints involved in swiping motion (adjust if necessary)
@@ -814,7 +838,7 @@ class Log2MotionEnv(BaseV0Custom):
 
         # Get the indices of these joints in qvel
         fingertip_joint_indices = [
-            self.sim.model.joint_name2id(joint) for joint in fingertip_joint_names if joint in self._get_joint_names()
+            int(self.model.jnt_dofadr[self.model.joint(joint).id]) for joint in fingertip_joint_names if joint in self._get_joint_names()
         ]
         return fingertip_joint_indices
 
@@ -827,25 +851,36 @@ class Log2MotionEnv(BaseV0Custom):
                                  Affects both the geom and site size for touch detection.
             if_reset (bool): If it should call the self.reset().
         """
+        if not np.isfinite(button_size) or button_size <= 0:
+            raise ValueError("button_size must be a positive finite radius in metres")
         self.current_button_size = button_size
-        site1_index = self.sim.model.site_name2id("touch_area_1")
-        geom1_index = self.sim.model.geom_name2id("touch_area_1_geom")
+        site1_index = self.sim.model.site("touch_area_1").id
+        geom1_index = self.sim.model.geom("touch_area_1_geom").id
 
         self.sim.model.geom_size[geom1_index] = [button_size, self.target["geo_size"][1], 0.0]
         self.sim.model.site_size[site1_index] = [button_size, self.target["geo_size"][1], 0.0]
-        self.sim.forward()
+        self._refresh_target_geometry()
         if if_reset:
             self.prev_solved_qpos = None
             self.solved_goal = False
             self.hold_information = None
             self.target['geo_size'] = copy.deepcopy(
-                self.sim.model.geom_size[self.sim.model.geom_name2id(f"{'touch_area_1'}_geom")]).ravel()
+                self.sim.model.geom_size[self.sim.model.geom(f"{'touch_area_1'}_geom").id]).ravel()
             self.reset()
         else:
             self.target['geo_size'] = copy.deepcopy(
-                self.sim.model.geom_size[self.sim.model.geom_name2id(f"{'touch_area_1'}_geom")]).ravel()
+                self.sim.model.geom_size[self.sim.model.geom(f"{'touch_area_1'}_geom").id]).ravel()
 
     def _reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
+        if seed is not None:
+            # A seeded Gymnasium reset starts a reproducible full episode.
+            reset_qpos = self.start_qpos_data['return_qpos_button'] if reset_qpos is None else reset_qpos
+            self.sim.data.act[:] = 0
+            self.contact_counter = 0
+            self.last_contact = False
+            self.last_swipe = False
+            self.change_the_conaff(1)
+        supplied_qvel = reset_qvel
         init_qpos = copy.deepcopy(self.sim.data.qpos[:].copy())
         init_qvel = copy.deepcopy(self.sim.data.qvel[:].copy())
 
@@ -861,7 +896,7 @@ class Log2MotionEnv(BaseV0Custom):
             self.outside_of_phone = False
             self.previous_action = None
 
-        if reset_qpos != None:
+        if reset_qpos is not None:
             if self.muscle_effort_model is not None:
                 self.muscle_effort_model.reset()
             reset_qpos = deepcopy(reset_qpos)
@@ -874,14 +909,17 @@ class Log2MotionEnv(BaseV0Custom):
             reset_qvel = deepcopy(self.START_QVEL)
             self.previous_action = None
         self.previous_action = None
-        reset_qvel = deepcopy(self.START_QVEL)
+        reset_qvel = deepcopy(self.START_QVEL) if supplied_qvel is None else np.asarray(supplied_qvel).copy()
         self.init_qpos[:] = reset_qpos
         self.init_qvel[:] = reset_qvel
         self.solved_goal = False
         self._swipe_goal = False
         self.hold_information = None
+        self.contact_counter = 0
+        self.last_contact = False
         self.mistake_counter = 0
         self.mistake_counter_pos = {}
 
-        self.robot.reset(reset_pos=reset_qpos, reset_vel=reset_qvel, seed=42, **kwargs)
+        self._elapsed_steps = 0
+        self._reset_physics(reset_qpos, reset_qvel)
         return self.get_obs()

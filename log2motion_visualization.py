@@ -1,79 +1,65 @@
-import sys
+"""Command-line simulation protocol used by the Log2Motion Figma bridge."""
+from __future__ import annotations
+
+import argparse
+import json
 from pathlib import Path
-from myosuite import gym
-
-from environment.log2motion import Log2Motion
-def main():
-    # Set up paths
-    current_dir = Path("").resolve()
-    sys.path.append(str(current_dir / 'environment'))
-
-    # Android emulator configuration
-    android_config = {
-        'avd_name': 'Pixel6API36',
-        'android_avd_home': 'C:/Users/USER_NAME/.android/avd',
-        'android_sdk_root': 'C:/Users/USER_NAME/AppData/Local/Android/Sdk',
-        'emulator_path': 'C:/Users/USER_NAME/AppData/Local/Android/Sdk/emulator/emulator',
-        'adb_path': 'C:/Users/USER_NAME/AppData/Local/Android/Sdk/platform-tools/adb'
-    }
-
-    # Environment configuration
-    env_config = {
-        'model_path': (current_dir / 'environment/scene/log2motion_scene.xml').as_posix(),
-        'android_config': android_config,
-        'screen_resolution': [2400, 1080],
-        "use_android": True,
-    }
-
-    # Register the environment
-    def register_env(env_id='Log2MotionEnv', entry_point='log2motion_env:Log2MotionEnv', env_config=None):
-        gym.register(
-            id=env_id,
-            entry_point=entry_point,
-            kwargs={"env_config": env_config}
-        )
-
-    register_env(env_config=env_config)
-
-    # Create environment
-    env = gym.make("Log2MotionEnv")
+import sys
 
 
-    # Initialize replay environment
-    replay_env = Log2Motion(
-        env=env.unwrapped,
-        policy_paths_dict={
-            "swipe": "policies/swipe",
-            "default": "policies/normal"
-        },
-        show_screen=False
-    )
+def _boolean(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ("1", "true", "yes", "on"):
+        return True
+    if value.lower() in ("0", "false", "no", "off"):
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
 
-    # Define episode actions
-    episode_list = [
-        {'time': [], 'yx_touch': (-1.0, -1.0), 'yx_lift': (-1.0, -1.0), 'action_type': "ActionType.PRESS_HOME"},
-        {'time': [], 'yx_touch': (0.8091, 0.5899), 'yx_lift': (0.8091, 0.5899), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.8216, 0.5105), 'yx_lift': (0.8216, 0.5105), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.9036, 0.1837), 'yx_lift': (0.9036, 0.1837), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.9036, 0.8237), 'yx_lift': (0.9036, 0.8237), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.9036, 0.8237), 'yx_lift': (0.9036, 0.8237), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.0544, 0.9420), 'yx_lift': (0.0544, 0.9420), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (0.4505, 0.5985), 'yx_lift': (0.4505, 0.5985), 'action_type': "ActionType.DUAL_POINT"},
-        {'time': [], 'yx_touch': (-1.0, -1.0), 'yx_lift': (-1.0, -1.0), 'action_type': "ActionType.STATUS_TASK_COMPLETE"},
-    ]
 
-    # Start replay
-    replay_env.show_screen = True
-    replay_env.start_render(show_marker=True)
-    replay_env.frames = {}
-    replay_env.collect_frames = True
-    results = replay_env.replay(
-        action_list=episode_list,
-        multiple_episode=False,
-        resting_position=True
-    )
-
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--actions-file", type=Path, required=True, help="JSON list of normalized touch actions")
+    parser.add_argument("--visualization", nargs="?", const=True, default=False, type=_boolean)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--button-size", type=float, default=0.005)
+    parser.add_argument("--video", type=Path, help="optional MP4 of the simulated scene")
+    parser.add_argument("--video-size", nargs=2, type=int, default=(1280, 720),
+                        metavar=("WIDTH", "HEIGHT"), help="positive even MP4 dimensions (default: 1280 720)")
+    parser.add_argument("--no-rest", action="store_true", help="skip movements to the resting target")
+    args = parser.parse_args(argv)
+    if any(value <= 0 or value % 2 for value in args.video_size):
+        parser.error("--video-size requires positive even width and height")
+    env = None
+    try:
+        from environment.log2motion import Log2Motion, validate_actions
+        from environment.log2motion_env import Log2MotionEnv
+        actions = validate_actions(json.loads(args.actions_file.read_text(encoding="utf-8-sig")))
+        root = Path(__file__).resolve().parent
+        env = Log2MotionEnv(seed=args.seed)
+        replay = Log2Motion(env, {"swipe": root / "policies/swipe.zip",
+                                 "default": root / "policies/normal.zip"},
+                            show_screen=args.visualization, button_size=args.button_size,
+                            collect_frames=args.video is not None, frame_size=tuple(args.video_size))
+        replay.start_render()
+        results = replay.replay(actions, resting_position=not args.no_rest,
+                                progress_callback=lambda n, total: print(f"---PROGRESS:{n}/{total}---", flush=True))
+        if args.video is not None:
+            args.video.parent.mkdir(parents=True, exist_ok=True)
+            replay.save_video_from_episodes(args.video)
+        output = {"status": "success", "results": results, "episodes": replay.episode_info}
+        code = 0
+    except Exception as exc:
+        output = {"status": "error", "message": str(exc), "error": str(exc)}
+        code = 1
+    finally:
+        if env is not None:
+            env.close()
+    print("---DATA_START---", flush=True)
+    print(json.dumps(output, allow_nan=False), flush=True)
+    print("---DATA_END---", flush=True)
+    return code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

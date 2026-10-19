@@ -1,0 +1,12 @@
+name: log2motion
+services:
+  simulation-server:
+    build: .
+    image: log2motion:myosuite3
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:6080:6080"
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ./runtime/figma:/app/runtime/figma

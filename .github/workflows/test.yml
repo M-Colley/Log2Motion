@@ -1,0 +1,55 @@
+name: Test
+on: [push, pull_request]
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglfw3 xvfb
+      - run: uv sync --locked
+      - run: uv pip check
+      - run: uv run ruff check .
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a uv run pytest -q
+        env:
+          MUJOCO_GL: glfw
+          LIBGL_ALWAYS_SOFTWARE: '1'
+      - if: runner.os == 'Windows'
+        run: uv run pytest -q
+  plugin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integration/figma-plugin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: integration/figma-plugin/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t log2motion:test .
+      - run: docker run --detach --name log2motion-test log2motion:test
+      - run: docker cp scripts/smoke_bridge.py log2motion-test:/tmp/smoke_bridge.py
+      - run: docker exec log2motion-test python /tmp/smoke_bridge.py
+      - if: failure()
+        run: docker logs log2motion-test
+      - if: always()
+        run: docker rm --force log2motion-test

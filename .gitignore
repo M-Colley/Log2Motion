@@ -1,0 +1,14 @@
+.venv/
+.upstream/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+integration/data/
+runtime/
+integration/figma-plugin/node_modules/
+*.log
+

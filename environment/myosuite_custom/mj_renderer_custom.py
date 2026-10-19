@@ -1,32 +1,28 @@
+"""Phone texture updates for MyoSuite 3's native MuJoCo renderer."""
 import mujoco
-from mujoco import mjr_uploadTexture, MjrContext, mjtFontScale
-from myosuite.renderer.mj_renderer import MJRenderer
 
-from myosuite_custom.renderer_custom import CustomRenderer
+from myosuite.viz.mj_renderer import MJRenderer
 
 
 class CustomMJRenderer(MJRenderer):
-    def __init__(self, *args, **kwargs):
-        # Initialize the base MJRenderer
-        super().__init__(*args, **kwargs)
-    def upd_texture(self, texture_id, data, window=True, model=None):
-        if not self._window and not self._renderer:
-            return
-        if window:
+    def render_offscreen(self, *args, camera_id=-1, **kwargs):
+        # MyoSuite 3.0.0 only applies configured free-camera settings to its
+        # window. Pass the equivalent explicit camera to its offscreen path.
+        if camera_id is None or (isinstance(camera_id, int) and
+                                 (camera_id < 0 or camera_id >= self._mj_model.ncam)):
+            camera = mujoco.MjvCamera()
+            mujoco.mjv_defaultFreeCamera(self._mj_model, camera)
+            self._update_camera_properties(camera)
+            camera_id = camera
+        return super().render_offscreen(*args, camera_id=camera_id, **kwargs)
+
+    def upd_texture(self, texture_id, data=None, window=True, model=None):
+        if self._window is not None:
             self._window.update_texture(texture_id)
             self.refresh_window()
-        else:
-            # self._renderer.update_texture(texture_id=texture_id)
-            # while hasattr(data, "_mjdata"):
-            #     data = data._mjdata
-            # if type(data).__name__ != "MjData":
-            #     raise TypeError(f"Expected mujoco._structs.MjData, got {type(data)}")
-            # self._renderer.update_scene(data=data.ptr)
-            # ctx = MjrContext(model.ptr, mjtFontScale.mjFONTSCALE_150)
-            mjr_uploadTexture(model.ptr, self._renderer.mjr_context, texture_id)
-            # self._renderer.update_texture(texture_id=texture_id)
-
-    def setup_renderer(self, model, height, width):
-        self._renderer = CustomRenderer(model, height=height, width=width)
-        self._scene_option = mujoco.MjvOption()
-        self._update_renderer_settings(self._scene_option)
+        # MuJoCo's Renderer exposes no public texture upload method. Recreate
+        # offscreen contexts lazily to pick up the edited model texture.
+        for renderer in self._renderers.values():
+            renderer.close()
+        self._renderers.clear()
+        self._renderer = None
