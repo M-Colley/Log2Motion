@@ -168,6 +168,7 @@ def test_every_bundled_checkpoint_loads_and_controls_model(env, archive):
         assert np.isfinite(info["obs_dict"]["muscle_cost"]).all()
 
 
+@pytest.mark.rendering
 def test_offscreen_free_camera_changes_image_and_named_camera_renders(env):
     renderer = env.sim.renderer
     renderer.set_free_camera_settings(distance=0.5, azimuth=0)

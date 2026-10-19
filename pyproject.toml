@@ -2,7 +2,7 @@
 name = "log2motion"
 version = "0.2.0"
 description = "Biomechanical motion synthesis from touch logs and Figma prototypes"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.16"
 license = "Apache-2.0"
 dependencies = [
     "myosuite==3.0.0",
@@ -17,6 +17,8 @@ dependencies = [
     "imageio-ffmpeg>=0.6.0,<0.7",
     "websockets>=16,<17",
     "reportlab>=5.0.1,<6",
+    # The stable h5py release has no CPython 3.15 wheels yet.
+    "h5py==3.17.0.dev0; python_version >= '3.15'",
 ]
 
 [project.optional-dependencies]
@@ -28,20 +30,30 @@ dev = ["pytest>=9.1.1,<10", "pytest-timeout>=2.4.0,<3", "ruff>=0.17.1,<0.18"]
 [tool.uv]
 package = false
 
-# Simulation inference needs no CUDA runtime; keep Linux containers small.
+# CPU inference needs no CUDA runtime. CPython 3.15 wheels ship on this index.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+myosuite = [{ git = "https://github.com/M-Colley/myosuite.git", rev = "42cfe809b458c525dabe47945fd077c775d75183", marker = "python_version >= '3.15'" }]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' or python_version >= '3.15'" }]
+h5py = [{ index = "scientific-python-nightly", marker = "python_version >= '3.15'" }]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
+[[tool.uv.index]]
+name = "scientific-python-nightly"
+url = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
+explicit = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 timeout = 180
-markers = ["integration: real policy, renderer, or subprocess integration tests"]
+markers = [
+    "integration: real policy, renderer, or subprocess integration tests",
+    "rendering: requires an OpenGL-capable desktop or virtual display",
+]
 
 [tool.ruff]
 target-version = "py312"

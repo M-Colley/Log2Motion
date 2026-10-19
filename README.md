@@ -10,11 +10,13 @@ are now in this repository.
 
 ## Install
 
-Use Python **3.12 or 3.13**, Node.js **24 or newer**, and [uv](https://docs.astral.sh/uv/).
+Use Python **3.12–3.15**, Node.js **24 or newer**, and
+[uv 0.13.2 or newer](https://docs.astral.sh/uv/). Python 3.14 uses stable packages
+and is the recommended default.
 Run from this repository:
 
 ```powershell
-uv sync --locked
+uv sync --locked --python 3.14
 uv run python -m integration.server
 ```
 
@@ -36,11 +38,21 @@ targets inside phone screen frames, arrange the click path, and run the simulati
 The original plugin does not export enough geometry for accurate coordinates;
 import this updated plugin to use the repaired integration. Chart.js is bundled locally.
 
-With pip instead of uv, create a Python 3.12 virtual environment and run
+With pip instead of uv, create a Python 3.14 virtual environment and run
 `python -m pip install -r requirements.txt`. Both Conda environment files use
 the same exported requirements. `uv.lock` locks the complete dependency tree;
 Gymnasium and WebSockets follow MyoSuite's compatible version limits. Linux
 uses CPU PyTorch to avoid installing CUDA for inference.
+
+To select Python 3.15, use `uv sync --locked --python 3.15`. Its lock uses the
+official PyTorch CPU index, an official h5py 3.17 development wheel, and the
+exact MyoSuite source commit from [upstream PR #557](https://github.com/MyoHub/myosuite/pull/557).
+The patch makes unused ONNX Runtime optional on 3.15; ONNX-dependent MyoSuite
+features remain unavailable until that package supports the interpreter.
+OSQP and Zstandard currently build from source on 3.15: Windows needs Visual
+Studio C++ Build Tools, and Linux needs a C/C++ compiler. These choices are
+isolated to 3.15. Python 3.12–3.14 use released MyoSuite and h5py packages.
+Update an older pip-installed uv with `python -m pip install --upgrade uv`.
 
 ## Docker and live visualization
 
@@ -95,7 +107,7 @@ npm test
 ```
 
 Linux rendering tests need a display, for example `xvfb-run -a uv run pytest -q`.
-CI covers Windows/Linux and Python 3.12/3.13 plus the plugin build and tests.
+CI covers Windows/Linux and Python 3.12–3.15 plus the plugin build and tests.
 To update the dependency export after editing `pyproject.toml`:
 
 ```powershell

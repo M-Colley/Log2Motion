@@ -30,6 +30,7 @@ def run_cli(tmp_path, actions, *extra):
 
 
 @pytest.mark.integration
+@pytest.mark.rendering
 def test_cli_runs_outside_repo_and_exports_playable_video(tmp_path):
     import imageio.v2 as imageio
 

@@ -6,6 +6,15 @@ The reproducible CPU stack is in `uv.lock` and the exported `requirements.txt`:
 MyoSuite 3.0.0, MuJoCo 3.16.0, myo-sim 0.2.3, Stable-Baselines3 2.9.0,
 PyTorch 2.14.1, NumPy 2.5.4, SciPy 1.18.1, Pillow 13.0.0,
 Gymnasium 1.2.3, WebSockets 16.1.1, and ReportLab 5.0.1.
+Python 3.14 uses ONNX Runtime 1.31.0. Python 3.15 uses official CPU PyTorch
+wheels, h5py 3.17.0.dev0 from the official scientific-Python nightly feed,
+and MyoSuite commit `42cfe809b458c525dabe47945fd077c775d75183` from
+[upstream PR #557](https://github.com/MyoHub/myosuite/pull/557). That patch
+preserves the existing ONNX dependencies on older Python versions while
+allowing native CPU rollouts on 3.15 without the unavailable ONNX binary.
+OSQP 1.1.3 and Zstandard 0.25.0 build successfully from their official sdists
+using MSVC on Windows 3.15. Real QP solving, compression, HDF5 I/O, and PPO
+checkpoint loading are checked after the builds.
 MyoSuite constrains Gymnasium below 1.3; its Viser dependency constrains
 WebSockets below 17. Linux uses the matching CPU PyTorch build.
 
@@ -21,6 +30,11 @@ newest compatible TypeScript 6 release is locked instead.
   JUnit results are recorded under `runtime/pytest312-results.xml` and the
   task scratch directory on D:. Gymnasium emits one legacy `seed()` warning;
   the modern `reset(seed=...)` contract passes its checker.
+- Python 3.14.6 and the current security patch 3.14.8 also pass all 90 tests
+  and dependency compatibility checks on Windows.
+- Python 3.15.0 passes all 90 tests in 63 seconds, with a clean dependency
+  check. Its HDF5 read/write round trip, OSQP optimization solve, native
+  compression, trained PPO loading, real rendering, and video export pass.
 - All five bundled policy archives load, predict 63 controls, and step the
   model with the original 74-value observation contract.
 - Gymnasium's environment checker, seeded reset/noise reproducibility,
@@ -30,6 +44,12 @@ newest compatible TypeScript 6 release is locked instead.
   collision contacts, including refreshed broadphase bounds.
 - Real repeated taps and a swipe exercise policy inference, physical target
   selection, release movements, gesture grouping, and monotonic sample times.
+- The [spatial rollout report](rollout-validation.json) records nine interior
+  grid taps, two repeated center taps, and a swipe at seed 42. All 12 gestures
+  succeed, with finite values, increasing times, and positive MuJoCo fingertip
+  contact force. Two bottom-row taps also make incorrect contacts before
+  succeeding. Sensor, force, proximity, and penetration evidence are recorded
+  separately; this is a single-seed simulation check.
 - Named/free offscreen camera rendering and Android texture resizing are
   tested with real MuJoCo arrays. MP4 export is decoded and checked for frame
   dimensions and playback duration against simulated time.
@@ -42,7 +62,7 @@ newest compatible TypeScript 6 release is locked instead.
   Type checking, build, ESLint, and `npm audit` pass with no reported npm
   vulnerabilities.
 - Ruff, dependency compatibility, lock freshness, and whitespace checks pass.
-  CI runs Windows/Linux on Python 3.12/3.13, plugin checks, and a real Docker
+  CI runs Windows/Linux on Python 3.12–3.15, plugin checks, and a real Docker
   bridge smoke test.
 
 ## Upstream defect
@@ -56,6 +76,8 @@ parity failures that reproduce identically on unmodified upstream `dev`.
 These existing failures are disclosed in the PR; their expected values were
 not altered. Log2Motion contains a small local camera workaround until an
 upstream release includes the fix.
+All upstream PR #556 CI checks also pass, including Ubuntu, Windows, macOS,
+Python 3.14, docs, lint, and CLA verification.
 
 ## Limits
 
@@ -76,6 +98,9 @@ blocked by its stale `sailor-ingest.sock` runtime socket; automatic approval
 review rejected its cleanup, and moving it failed. Container validation is
 delegated to the repository's Linux CI job. No Docker images or volumes were
 deleted as a recovery measure.
+The Linux CI job successfully built the image and passed its real two-tap,
+progress, history, and PDF smoke test. Hosted Windows CI lacks an OpenGL driver,
+so its two rendering tests run on Linux CI and local Windows desktop sessions.
 
 Preserving policy spaces and demonstrating successful rollouts does not
 establish numerical or scientific equivalence with MyoSuite 2.4/MuJoCo 3.1.2.
