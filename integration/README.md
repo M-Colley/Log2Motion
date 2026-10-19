@@ -57,8 +57,8 @@ Requests identify their originating session explicitly, and chart uploads retain
 their session/run identity across reconnects. Abandoned simulation requests are
 cancelled when the client disconnects. Downsampled charts retain actual sample
 times and gesture durations rather than inferring timing from an average interval.
-Further findings and regression coverage are in the
-[additional bug audit](../docs/additional-bug-audit.md).
+Findings, fixes, direct source links, and regression coverage are in the
+[combined bug report](../docs/figma-plugin-bugs.md).
 
 Regression tests:
 

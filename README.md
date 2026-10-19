@@ -116,10 +116,9 @@ uv export --locked --no-dev --no-hashes --no-emit-project --emit-index-url --out
 ```
 
 See [validation notes](docs/validation.md) for tested behavior and upstream findings.
-The [Figma bug report](docs/figma-plugin-bugs.md) explains the original issues,
-their causes, implemented fixes, and regression coverage.
-The [additional bug audit](docs/additional-bug-audit.md) records further simulator,
-plugin, bridge, and upstream findings, with reproductions and fixes.
+The [combined bug report](docs/figma-plugin-bugs.md) covers the original and
+follow-up plugin, bridge, simulator, and upstream findings, with causes, fixes,
+direct source links, reproductions, and regression coverage.
 
 ## Credits and license
 

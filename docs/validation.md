@@ -1,7 +1,7 @@
 # Migration validation — 19–20 October 2026
 
 The initial migration checks below are supplemented by the
-[additional bug audit](additional-bug-audit.md): the expanded suite has 126 Python
+[combined bug report](figma-plugin-bugs.md): the expanded suite has 126 Python
 tests and 36 plugin tests, including further simulator, bridge, UI, and upstream
 regressions. That report records the subsequent validation and remaining limits.
 
