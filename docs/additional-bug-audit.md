@@ -4,7 +4,9 @@ Date: 20 October 2026
 
 This is the second audit, following the [original Figma findings](figma-plugin-bugs.md).
 The baseline is commit `5d8d997`. Findings below are additional defects reproduced
-against that baseline, or against the upstream MyoSuite development source. Tests
+against that baseline or the upstream MyoSuite development source, plus an
+explicitly identified queue-handling issue caught while reviewing this audit's
+own changes. Tests
 exercise the maintained plugin under `integration/`; the downloaded original
 project remains unchanged.
 
@@ -134,6 +136,8 @@ rather than relying on timing during manual clicking.
 | Charts were lost when the socket disconnected during thumbnail/export work | Upload was attempted once and silently skipped while disconnected. Run/session-keyed uploads are retained and retried after reconnect, with matching acknowledgements and terminal stale-run errors removing only the corresponding upload. |
 | Reconnection changed the meaning of a pending simulation | Visualization and session settings could be read again after the user or another client changed them. Pending requests retain the starting options and explicit session identity. |
 | Late history and diagram responses overwrote another selection | Run IDs can repeat across sessions, and a delayed response could arrive after another run/session was selected. Requests identify their session; responses are checked against the current session and run before rendering. The bridge echoes the required identity fields. |
+| A late comparison displayed old differences under newly selected run headers | The comparison response did not identify its run pair or session. Responses now echo both ordered run IDs and the session; the UI rejects responses that no longer match the selection. |
+| Retryable chart-save failures discarded newly queued snapshots | Caught during review of this audit's new upload queue: all chart-save errors were treated as terminal, including storage `OSError`s. The bridge now marks retryable failures; the UI retains those snapshots and retries with bounded delays, while stale session/run errors discard only their matching upload. |
 | Asynchronous export followed a changing click path | The export loop read mutable selection state across awaited node/thumbnail operations. It now freezes the requested order, and each exported node's geometry is captured before awaiting its thumbnail. |
 | Deleted selected nodes silently disappeared from the simulation | Missing nodes were skipped, shortening the requested path without explanation. Export now returns an actionable error asking the user to review the missing selection. |
 | Highlights changed the design's auto-layout | Highlight rectangles were inserted into the selected node's container and could become layout children, moving or resizing real UI elements. They are now page-level overlays positioned from the node's absolute transform. |
@@ -149,14 +153,15 @@ coordinates against nonuniform sample times and exact gesture durations.
 
 ## Verification
 
-- Native Windows Python 3.12: **125 tests passed** (60 simulation, 60
+- Native Windows Python 3.12: **126 tests passed** (60 simulation, 61
   bridge/history/PDF, five end-to-end), with the existing Gymnasium legacy-seed
   warning. The JUnit result is `runtime/pytest-additional-audit312.xml`.
-- Native Windows Python 3.15: the 60 simulator and 60 bridge/history/PDF cases
-  also pass. The existing Python 3.12–3.15 Windows/Linux CI matrix exercises the
+- Native Windows Python 3.15: the 60 simulator, 61 bridge/history/PDF, and five
+  real end-to-end cases also pass across their corresponding test runs. The
+  existing Python 3.12–3.15 Windows/Linux CI matrix exercises the
   expanded suite; hosted Windows excludes its two graphics-driver-dependent
   cases, which are covered by native Windows and Linux.
-- Plugin: **29 tests passed**, including 19 new lifecycle/UI regressions.
+- Plugin: **36 tests passed**, including 26 new lifecycle/UI regressions.
   TypeScript checking/build, ESLint, `npm audit`, and whitespace checks pass.
 - Upstream fatigue fix: 108 core/wrapper tests pass, one skips; the new
   regressions also pass on native Python 3.15. Renderer/geometry coverage for

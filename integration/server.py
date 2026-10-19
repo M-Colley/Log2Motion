@@ -156,8 +156,11 @@ class BridgeServer:
             await send({"type": "HISTORY_DATA", "data": history.get_formatted_history_for_ui(session_id),
                         "session_id": session_id})
         elif kind == "COMPARE_RUNS":
+            session_id = msg.get("session_id") or history.get_session_overview().get("activeSessionId")
             await send({"type": "COMPARISON_RESULT", "data": history.compare_runs(
-                msg.get("run_a_id"), msg.get("run_b_id"), msg.get("session_id"))})
+                msg.get("run_a_id"), msg.get("run_b_id"), session_id),
+                "session_id": session_id, "run_a_id": msg.get("run_a_id"),
+                "run_b_id": msg.get("run_b_id")})
         elif kind == "SAVE_SIMULATION_CHARTS":
             charts = msg.get("charts", {})
             if not isinstance(charts, dict):
@@ -249,6 +252,7 @@ class BridgeServer:
                                          if isinstance(exc, TimeoutError) else type(exc).__name__)
                     await send({"type": error_type, "status": "error", "error": error, "message": error,
                                 "request_type": kind,
+                                "retryable": isinstance(exc, (OSError, TimeoutError)),
                                 **({"session_id": msg.get("session_id"), "run_id": msg.get("run_id")}
                                    if kind == "SAVE_SIMULATION_CHARTS" else {})})
         except ConnectionClosed:

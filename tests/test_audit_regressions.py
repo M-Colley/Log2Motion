@@ -73,10 +73,13 @@ def test_bridge_echoes_resolved_session_and_chart_identity():
                                "run_id": "1", "charts": {}}, send)
         await bridge.dispatch({"type": "GET_RUN_DIAGRAMS", "sessionId": "1",
                                "runId": "1", "runIndex": 0}, send)
+        await bridge.dispatch({"type": "COMPARE_RUNS", "run_a_id": "1", "run_b_id": "1"}, send)
         assert messages[0]["session_id"] == "1"
         assert messages[1]["session_id"] == "1"
         assert messages[1]["run_id"] == "1"
         assert messages[2]["sessionId"] == "1"
+        assert messages[3]["session_id"] == "1"
+        assert messages[3]["run_a_id"] == messages[3]["run_b_id"] == "1"
 
     asyncio.run(scenario())
 
@@ -132,7 +135,43 @@ def test_rejected_delayed_charts_echo_identity_and_do_not_poison_new_session():
                 assert response["type"] == "ERROR"
                 assert response["request_type"] == "SAVE_SIMULATION_CHARTS"
                 assert response["session_id"] == response["run_id"] == "1"
+                assert response["retryable"] is False
         assert history.get_formatted_history_for_ui(replacement)[0]["chart_images"] == {}
+
+    asyncio.run(scenario())
+
+
+def test_chart_storage_failure_is_retryable_and_a_later_save_succeeds(monkeypatch):
+    history.add_session()
+    history.record_simulation_run(figma_export(), simulation_result())
+    save = history.save_charts_to_history
+    attempts = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("No space left on device")
+        return save(*args, **kwargs)
+
+    monkeypatch.setattr(history, "save_charts_to_history", fail_once)
+
+    async def scenario():
+        bridge = server.BridgeServer()
+        async with serve(bridge.handler, "127.0.0.1", 0) as websocket_server:
+            port = websocket_server.sockets[0].getsockname()[1]
+            async with connect(f"ws://127.0.0.1:{port}") as client:
+                request = json.dumps({"type": "SAVE_SIMULATION_CHARTS", "session_id": "1",
+                                      "run_id": "1", "charts": {"trajectory": "saved"}})
+                await client.send(request)
+                response = json.loads(await client.recv())
+                assert response["type"] == "ERROR"
+                assert response["retryable"] is True
+                assert response["session_id"] == response["run_id"] == "1"
+                await client.send(request)
+                response = json.loads(await client.recv())
+                assert response["type"] == "CHARTS_SAVED"
+        assert history.get_formatted_history_for_ui()[0]["chart_images"] == {"trajectory": "saved"}
 
     asyncio.run(scenario())
 

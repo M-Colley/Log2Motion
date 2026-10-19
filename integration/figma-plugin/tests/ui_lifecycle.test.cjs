@@ -131,3 +131,78 @@ test("disconnecting an active simulation restores controls without silently reru
   app.sockets.at(-1).onopen();
   assert.equal(app.sockets.at(-1).sent.some((message) => message.type === "START_SIM"), false);
 });
+
+for (const legacy of [false, true]) {
+  test(`comparison response cannot mix an old pair's charts with the current pair${legacy ? " on a legacy server" : ""}`, () => {
+    const app = ui();
+    app.run('currentOverview={activeSessionId:"1",sessions:[]};currentHistoryRuns=["A","B","C","D"].map(id=>({id,name:id,metrics:{}}));selectedIndexA=0;selectedIndexB=1;executeRunComparison(currentHistoryRuns[0],currentHistoryRuns[1],"1");selectedIndexA=2;selectedIndexB=3;executeRunComparison(currentHistoryRuns[2],currentHistoryRuns[3],"1")');
+    const response = (runA, runB) => ({type:"COMPARISON_RESULT", data:{added_elements:[{id:runA,name:runA}]},
+      ...(legacy ? {} : {session_id:"1",run_a_id:runA,run_b_id:runB})});
+    app.sockets[0].receive(response("A", "B"));
+    assert.equal(app.run("currentComparisonResult"), null);
+    app.sockets[0].receive(response("C", "D"));
+    assert.equal(app.run("currentComparisonResult.added_elements[0].id"), "C");
+    assert.equal(app.document.getElementById("selectedElementsHeader1").textContent, "C");
+    assert.equal(app.document.getElementById("selectedElementsHeader2").textContent, "D");
+  });
+
+  test(`comparison response is ignored after switching sessions${legacy ? " on a legacy server" : ""}`, () => {
+    const app = ui();
+    app.run('currentOverview={activeSessionId:"1",sessions:[]};currentHistoryRuns=[{id:"A",metrics:{}},{id:"B",metrics:{}}];selectedIndexA=0;selectedIndexB=1;executeRunComparison(currentHistoryRuns[0],currentHistoryRuns[1],"1");currentOverview.activeSessionId="2"');
+    app.sockets[0].receive({type:"COMPARISON_RESULT",data:{added_elements:[{id:"old-session"}]},
+      ...(legacy ? {} : {session_id:"1",run_a_id:"A",run_b_id:"B"})});
+    assert.equal(app.run("currentComparisonResult"), null);
+  });
+}
+
+test("retryable chart storage errors back off, retain snapshots and recover on reconnect without alert storms", async () => {
+  const app = ui();
+  const socket = app.sockets[0];
+  const uploads = () => socket.sent.filter((message) => message.type === "SAVE_SIMULATION_CHARTS");
+  const failure = {type:"ERROR",request_type:"SAVE_SIMULATION_CHARTS",session_id:"3",run_id:"8",
+    retryable:true,error:"[Errno 28] No space left on device"};
+  socket.receive({type:"RESULT",data:simulation("8","3")});
+  await app.tick();
+  assert.equal(uploads().length, 1);
+  for (const [retry, delay] of [1000, 2000, 4000].entries()) {
+    socket.receive(failure);
+    socket.receive(failure); // A duplicate failure must not schedule another retry.
+    assert.equal(app.run("pendingChartUploads.size"), 1);
+    await app.flushTimers(delay - 1);
+    assert.equal(uploads().length, retry + 1);
+    await app.flushTimers(delay);
+    assert.equal(uploads().length, retry + 2);
+    assert.equal(app.alerts.length, 0);
+  }
+  socket.receive(failure);
+  socket.receive(failure);
+  await app.flushTimers();
+  assert.equal(uploads().length, 4, "Retries must stop after the bounded backoff");
+  assert.equal(app.alerts.length, 1);
+  assert.equal(app.run("pendingChartUploads.size"), 1);
+  socket.readyState = 3;
+  socket.onclose();
+  app.run("connectWebSocket()");
+  const reconnected = app.sockets.at(-1);
+  reconnected.onopen();
+  assert.equal(reconnected.sent.filter((message) => message.type === "SAVE_SIMULATION_CHARTS").length, 1);
+  reconnected.receive({type:"CHARTS_SAVED",session_id:"3",run_id:"8"});
+  assert.equal(app.run("pendingChartUploads.size"), 0);
+});
+
+for (const response of [
+  {type:"CHARTS_SAVED",session_id:"3",run_id:"8"},
+  {type:"ERROR",request_type:"SAVE_SIMULATION_CHARTS",session_id:"3",run_id:"8",retryable:false,error:"Run removed"},
+]) {
+  test(`${response.type} clears a matching chart snapshot and cancels its pending retry`, async () => {
+    const app = ui();
+    const socket = app.sockets[0];
+    socket.receive({type:"RESULT",data:simulation("8","3")});
+    await app.tick();
+    socket.receive({type:"ERROR",request_type:"SAVE_SIMULATION_CHARTS",session_id:"3",run_id:"8",retryable:true,error:"Temporary storage failure"});
+    socket.receive(response);
+    await app.flushTimers();
+    assert.equal(app.run("pendingChartUploads.size"), 0);
+    assert.equal(socket.sent.filter((message) => message.type === "SAVE_SIMULATION_CHARTS").length, 1);
+  });
+}

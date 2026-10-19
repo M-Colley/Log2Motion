@@ -3771,6 +3771,7 @@
       let contactChart = null;
       let pendingChartSnapshot = null;
       const pendingChartUploads = new Map();
+      const MAX_CHART_UPLOAD_RETRIES = 3;
 
       // TThis list stores the thumbnails drawn for the Click Timeline diagram
       // (position + size + source image), and the makeThumbnailPlugin updates
@@ -4851,10 +4852,38 @@
 
       function chartUploadKey(sessionId, runId) { return JSON.stringify([String(sessionId), String(runId)]); }
 
+      function removeChartUpload(sessionId, runId) {
+        const key = chartUploadKey(sessionId, runId);
+        const upload = pendingChartUploads.get(key);
+        if (upload?.retryTimer) clearTimeout(upload.retryTimer);
+        pendingChartUploads.delete(key);
+      }
+
+      function retryChartUpload(response) {
+        const key = chartUploadKey(response.session_id, response.run_id);
+        const upload = pendingChartUploads.get(key);
+        if (!upload || upload.retryTimer || upload.retryExhausted) return;
+        upload.sent = false;
+        if ((upload.retries || 0) < MAX_CHART_UPLOAD_RETRIES) {
+          const delay = 1000 * (2 ** (upload.retries || 0));
+          upload.retries = (upload.retries || 0) + 1;
+          upload.retryTimer = setTimeout(() => {
+            upload.retryTimer = null;
+            if (pendingChartUploads.get(key) === upload) flushChartUploads();
+          }, delay);
+        } else {
+          upload.retryExhausted = true;
+          if (!upload.warned) {
+            upload.warned = true;
+            alert("Chart images could not be saved after several attempts. They are retained and will be retried when the server reconnects.");
+          }
+        }
+      }
+
       function flushChartUploads() {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         for (const upload of pendingChartUploads.values()) {
-          if (!upload.sent) {
+          if (!upload.sent && !upload.retryTimer && !upload.retryExhausted) {
             ws.send(JSON.stringify(upload.payload));
             upload.sent = true;
           }
@@ -4879,6 +4908,7 @@
       let selectedIndexB = null;
       let selectedIndexSingle = null;
       let currentComparisonResult = null;
+      const pendingComparisonRequests = [];
 
       // Wires up a custom dropdown's trigger icon so it reflects the menu's open/hover state.
       function setupDropdownIconHandler(triggerEl, menuEl, iconEl) {
@@ -5526,6 +5556,8 @@
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           return;
         } else {
+          // Retain request identity for older servers that do not echo it.
+          pendingComparisonRequests.push({sessionId: activeSessionId, runAId: runA.id, runBId: runB.id});
           ws.send(
             JSON.stringify({
               type: "COMPARE_RUNS",
@@ -6055,7 +6087,11 @@
       // If the client failed to connect show/update the overlay and
       // schedule another connection attempt with a growing backoff.
       function handleWebSocketClose() {
-        for (const upload of pendingChartUploads.values()) upload.sent = false;
+        for (const upload of pendingChartUploads.values()) {
+          if (upload.retryTimer) clearTimeout(upload.retryTimer);
+          Object.assign(upload, {sent: false, retryTimer: null, retries: 0, retryExhausted: false});
+        }
+        pendingComparisonRequests.length = 0;
         if (simulationInFlight) recoverSimulationControls();
         connectionEpoch += 1;
         reconnectAttempts += 1;
@@ -6627,15 +6663,20 @@
                 // Get the run data from the server to display the data on the history screen accordingly.
                 renderHistoryList(response.data, response.session_id);
               } else if (response.type === "COMPARISON_RESULT") {
-                // Get the result form the server for the comparison of two runs.
+                const requested = pendingComparisonRequests.shift();
+                const runA = currentHistoryRuns[selectedIndexA];
+                const runB = currentHistoryRuns[selectedIndexB];
+                const sessionId = response.session_id ?? requested?.sessionId;
+                const runAId = response.run_a_id ?? requested?.runAId;
+                const runBId = response.run_b_id ?? requested?.runBId;
+                if (!runA || !runB || sessionId == null || runAId == null || runBId == null ||
+                    String(sessionId) !== String(getCurrentSessionId()) ||
+                    String(runAId) !== String(runA.id) || String(runBId) !== String(runB.id)) return;
                 currentComparisonResult = response.data;
                 renderChangesList(currentComparisonResult);
                 const resultData = response.data || {};
                 const chartImagesA = resultData.chart_images_a || {};
                 const chartImagesB = resultData.chart_images_b || {};
-                const runA = currentHistoryRuns[selectedIndexA] || {};
-                const runB = currentHistoryRuns[selectedIndexB] || {};
-
                 renderCompareSelectedAndMetrics(runA, runB);
                 renderImageComparison(
                   chartImagesA,
@@ -6663,7 +6704,7 @@
                 }
               } else if (response.type === "CHARTS_SAVED") {
                 if (response.session_id != null && response.run_id != null) {
-                  pendingChartUploads.delete(chartUploadKey(response.session_id, response.run_id));
+                  removeChartUpload(response.session_id, response.run_id);
                 }
               } else if (
                 response.type === "SINGLE_RUN_PDF" ||
@@ -6692,8 +6733,13 @@
                 return;
               } else if (response.type === "ERROR") {
                 if (response.request_type === "SAVE_SIMULATION_CHARTS") {
-                  pendingChartUploads.delete(chartUploadKey(response.session_id, response.run_id));
+                  if (response.retryable === true) {
+                    retryChartUpload(response);
+                    return;
+                  }
+                  removeChartUpload(response.session_id, response.run_id);
                 }
+                if (response.request_type === "COMPARE_RUNS") pendingComparisonRequests.shift();
                 alert(response.error || response.message || "The server could not complete this request.");
               }
             } catch (error) {
