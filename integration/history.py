@@ -81,7 +81,7 @@ def get_session_overview():
         "activeSessionId": None,
         "sessions": []
     }
-    
+
     return load_json_file(SESSION_OVERVIEW_FILE, default_value=default_overview)
 
 
@@ -93,7 +93,7 @@ def update_overview_file(sessions, active_session_id=None):
     """
     # Fall back to the previously active session if none was given.
     current_overview = get_session_overview()
-    
+
     if active_session_id is None:
         active_session_id = current_overview.get("activeSessionId")
 
@@ -109,7 +109,7 @@ def update_overview_file(sessions, active_session_id=None):
         "activeSessionId": active_session_id,
         "sessions": sessions
     }
-    
+
     save_json_file(SESSION_OVERVIEW_FILE, overview_data)
     return overview_data
 
@@ -118,13 +118,13 @@ def set_active_session(session_id):
     """Mark the session_id as active, if it exists and return the overview either way."""
     overview = get_session_overview()
     existing_ids = [s["id"] for s in overview.get("sessions", [])]
-    
+
     if session_id in existing_ids:
         overview["activeSessionId"] = session_id
         save_json_file(SESSION_OVERVIEW_FILE, overview)
     else:
         raise ValueError("The selected session does not exist.")
-        
+
     return overview
 
 
@@ -133,25 +133,25 @@ def add_session(session_name=None):
     empty history files, and return the updated overview."""
     overview = get_session_overview()
     sessions = overview.get("sessions", [])
-    
+
     # Determine the next available id (1-4).
     existing_ids = [int(s["id"]) for s in sessions if s["id"].isdigit()]
     next_id = str(max(existing_ids) + 1) if existing_ids else "1"
-    
+
     if not session_name:
         session_name = f"Session {next_id}"
 
     files = get_session_filenames(next_id)
-    
+
     new_session = {
         "id": next_id,
         "name": session_name,
         "total_run_counter": 0,
         "files": files
     }
-    
+
     sessions.append(new_session)
-    
+
     # Create the three history files for this session.
     for path in files.values():
         save_json_file(path, [])
@@ -164,10 +164,10 @@ def delete_session(session_id):
     updated overview."""
     overview = get_session_overview()
     sessions = overview.get("sessions", [])
-    
+
     # Find the session to be deleted.
     session_to_delete = next((s for s in sessions if s["id"] == session_id), None)
-    
+
     if session_to_delete:
         # Physically delete the three history files.
         for file_path in session_to_delete["files"].values():
@@ -181,7 +181,7 @@ def delete_session(session_id):
         # Remove the session from the in-memory list too.
         sessions = [s for s in sessions if s["id"] != session_id]
         return update_overview_file(sessions)
-    
+
     return overview
 
 # ----------------------------------------
@@ -218,7 +218,7 @@ def extract_summary(sim_data):
     tolerates a couple of different raw result shapes."""
     if not sim_data or "results" not in sim_data:
         return None
-        
+
     episodes_summary = {}
     all_costs = []
     all_steps = 0
@@ -327,15 +327,15 @@ def record_simulation_run(current_figma_data, current_sim_data, timestamp="", se
     """
     overview = get_session_overview()
     active_id = session_id or overview.get("activeSessionId")
-    
+
     if not active_id:
         raise ValueError("Select or create a session before running a simulation.")
-    
+
     sessions = overview.get("sessions", [])
     active_session = next((s for s in overview["sessions"] if s["id"] == active_id), None)
     if not active_session:
         raise ValueError("The simulation's session no longer exists.")
-    
+
     files = active_session["files"]
     figma_file = files["figma_history"]
     sim_file = files["sim_history"]
@@ -391,7 +391,7 @@ def get_formatted_history_for_ui(session_id=None):
 
 def compare_runs(run_a, run_b, session_id=None):
     """
-    Compare two runs and return their added/removed/reordered/modified elements 
+    Compare two runs and return their added/removed/reordered/modified elements
     plus both runs chart images.
     """
 
@@ -469,16 +469,16 @@ def compare_runs(run_a, run_b, session_id=None):
     for key, item_b in map_b.items():
         if key in map_a:
             item_a = map_a[key]
-            
+
             p_x, c_x = item_a.get("x"), item_b.get("x")
             p_y, c_y = item_a.get("y"), item_b.get("y")
             if (p_x is not None and c_x is not None and p_x != c_x) or (p_y is not None and c_y is not None and p_y != c_y):
                 modified_elements.append({
                     **identity(item_b),
                     "property": "Position",
-                    "old_v1": p_x,  
-                    "old_v2": p_y,  
-                    "new_v1": c_x,  
+                    "old_v1": p_x,
+                    "old_v2": p_y,
+                    "new_v1": c_x,
                     "new_v2": c_y
                 })
 
@@ -502,9 +502,9 @@ def compare_runs(run_a, run_b, session_id=None):
                 modified_elements.append({
                     **identity(item_b),
                     "property": "Size",
-                    "old_v1": p_w,  
-                    "old_v2": p_h,  
-                    "new_v1": c_w,  
+                    "old_v1": p_w,
+                    "old_v2": p_h,
+                    "new_v1": c_w,
                     "new_v2": c_h
                 })
 
@@ -528,7 +528,7 @@ def save_charts_to_history(session_id, run_id, chart_images):
     overview = get_session_overview()
     active_id = session_id or overview.get("activeSessionId", "1")
     active_session = next((s for s in overview.get("sessions", []) if s["id"] == active_id), None)
-    
+
     if not active_session:
         return []
 
@@ -541,9 +541,8 @@ def save_charts_to_history(session_id, run_id, chart_images):
             target_run = next((run for run in change_hist if str(run.get("id")) == str(run_id)), None)
             if target_run is None:
                 raise ValueError("The requested run is no longer in history.")
-        
+
         target_run["chart_images"] = chart_images
         save_json_file(change_file, change_hist)
 
     return get_formatted_history_for_ui(active_id)
-

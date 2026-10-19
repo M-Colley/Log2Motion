@@ -11,4 +11,3 @@ integration/data/
 runtime/
 integration/figma-plugin/node_modules/
 *.log
-

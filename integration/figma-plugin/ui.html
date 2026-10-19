@@ -2568,7 +2568,7 @@
         </div>
         <p id="trajectoryInfo" class="diagram-subtitle small-text" hidden>
           The following diagram shows the physical X/Y movement of the finger
-          during the simulation run. Here too, a different color is used for each click 
+          during the simulation run. Here too, a different color is used for each click
           on an element along the clickpath, though these colors correspond to those used in the other
           diagrams. A solid line represents the hands movement
           directly from the previously clicked element to the next target
@@ -3031,7 +3031,7 @@
         }
       }
 
-      // Display the session list based on the specified summary data 
+      // Display the session list based on the specified summary data
       // and call this function whenever the session list changes.
       function renderSessionList(overview) {
         currentOverview = overview || {
@@ -3602,7 +3602,7 @@
         );
       });
 
-      // Define the function of the buttons for showing and hiding the generated charts, 
+      // Define the function of the buttons for showing and hiding the generated charts,
       // as well as the information text for each chart.
       document.addEventListener("DOMContentLoaded", () => {
         const toggleButtons = document.querySelectorAll(".toggle-diagram-btn");
@@ -3751,18 +3751,18 @@
       let trajectoryChart = null;
       let contactChart = null;
 
-      // TThis list stores the thumbnails drawn for the Click Timeline diagram 
-      // (position + size + source image), and the makeThumbnailPlugin updates 
-      // this list with every thumbnail drawn. The ‘mousemove’ and ‘mouseleave’ 
-      // listeners listed below perform a hit test on the cursor to display an 
-      // enlarged preview of the element over which the cursor is currently positioned. 
+      // TThis list stores the thumbnails drawn for the Click Timeline diagram
+      // (position + size + source image), and the makeThumbnailPlugin updates
+      // this list with every thumbnail drawn. The ‘mousemove’ and ‘mouseleave’
+      // listeners listed below perform a hit test on the cursor to display an
+      // enlarged preview of the element over which the cursor is currently positioned.
       let contactThumbnailRects = [];
       (() => {
         const canvas = document.getElementById("contactChart");
         const preview = document.getElementById("contactThumbnailHover");
         if (!canvas || !preview) return;
 
-        // Define by how much the thumbnail should be enlarged when the mouse pointer hovers over it. 
+        // Define by how much the thumbnail should be enlarged when the mouse pointer hovers over it.
         const HOVER_SCALE = 2.5;
         const HOVER_MAX_SIZE = 260;
 
@@ -4498,8 +4498,8 @@
         }
 
         // Draw each clicked elements own thumbnail as close to its colored
-        // contact marker as possible, on the canvas. Adapt the size to how much 
-        // room actually is free around that point so every thumbnail stays on 
+        // contact marker as possible, on the canvas. Adapt the size to how much
+        // room actually is free around that point so every thumbnail stays on
         // the canvas and none of them overlap.
         // If there are many closely-timed clicks the thumbnails can become
         // fairly small, which is what the hover-zoom preview is for.
@@ -4898,7 +4898,7 @@
       // --- Session dropdown ---
       // ------------------------
 
-      //Build and handle the session-selection dropdown: renders one item per session, 
+      //Build and handle the session-selection dropdown: renders one item per session,
       // highlights the active one, and calls onSessionChange when the user picks a different session.
       function setupSessionDropdown(
         sessions,
@@ -5176,7 +5176,7 @@
           return;
         }
 
-        // Reset the trigger labels back to the default placeholder. 
+        // Reset the trigger labels back to the default placeholder.
         selectedTextSingle.textContent = "Select a run...";
         selectedTextA.textContent = "Select a run...";
         selectedTextB.textContent = "Select a run...";
@@ -6078,7 +6078,7 @@
         ws.send(JSON.stringify({ type: "GET_TUTORIAL_VIDEO" }));
       }
 
-      // The tutorial plays at most TUTORIAL_MAX_LOOPS times in a row. 
+      // The tutorial plays at most TUTORIAL_MAX_LOOPS times in a row.
       // After that it hands the slot back to the gecko's still frame.
       const TUTORIAL_MAX_LOOPS = 2;
       let tutorialLoopCount = 0;
@@ -6172,7 +6172,7 @@
         const marginExtra = 2 * Math.min(headlineSlack, btnSlack);
 
         // Since the cropped recording is relatively wider than the plain
-        // gecko frame, the video widens faster than it grows tall. Cap how tall it gets 
+        // gecko frame, the video widens faster than it grows tall. Cap how tall it gets
         // so its auto-computed width never exceeds.
         const maxHeightForWidth =
           video.clientWidth / TUTORIAL_CROPPED_ASPECT;
@@ -6648,7 +6648,7 @@
             console.error("Error:", err);
           };
 
-          // If the connection is lost or if a connection could not be established at the very start, 
+          // If the connection is lost or if a connection could not be established at the very start,
           // display this in the overlay and try to establish a connection again.
           ws.onclose = handleWebSocketClose;
         } catch (error) {

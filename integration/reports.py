@@ -217,7 +217,7 @@ class NumberedCanvas(canvas.Canvas):
 
     def showPage(self):
         """Instead of finalizing the page immediately, remember its state so
-           the correct "X / total" can be placed once its clear how many pages 
+           the correct "X / total" can be placed once its clear how many pages
            the document has in total."""
         self._saved_page_states.append(dict(self.__dict__))
         self._startPage()
@@ -285,8 +285,8 @@ def generate_single_run_pdf(run):
     content_w = page_w - (2 * margin_x)
 
     # Y-coordinates for the header/footer lines that stay fixed on every page.
-    y_header = page_h - 38 * mm 
-    y_footer = 18 * mm        
+    y_header = page_h - 38 * mm
+    y_footer = 18 * mm
 
     # 30-70 Split of the content width (metrics column / diagram column).
     col_left_w = content_w * 0.30
@@ -729,7 +729,7 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
 
     def measure_height(flowables, width=None):
         """
-        Measure the total height a list of flowables to decide whether a section still fits 
+        Measure the total height a list of flowables to decide whether a section still fits
         on the current page before falling back to a page break.
         """
         if width is None:
@@ -746,7 +746,7 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
     def build_modified_elements_section():
         """
         Build the 'Modified Elements' heading + table as a list of
-        flowables, so it can either be measured/placed right after 
+        flowables, so it can either be measured/placed right after
         'Reordered Elements' if it still fits or on its own page otherwise.
         """
         flowables = [Paragraph("Modified Elements", style_sec_black), Spacer(1, 4 * mm)]
@@ -771,8 +771,8 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
             t_mod = Table(modified_rows, colWidths=[content_w * 0.3, content_w * 0.2, content_w * 0.25, content_w * 0.25], hAlign='CENTER')
             t_mod.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LINEBELOW', (0, 0), (-1, 0), 0.75, COLOR_BLACK),   
-                ('LINEBELOW', (0, 1), (-1, -1), 0.5, COLOR_BLACK),   
+                ('LINEBELOW', (0, 0), (-1, 0), 0.75, COLOR_BLACK),
+                ('LINEBELOW', (0, 1), (-1, -1), 0.5, COLOR_BLACK),
                 ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
             ]))
@@ -784,7 +784,7 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
     def build_diagram_column(run_label, metric_label, img_data):
         """
         Create one column of a diagram comparison pair: the heading,
-        the metric label and the chart image itself. 
+        the metric label and the chart image itself.
         """
         col = [
             Paragraph(run_label, style_sec_black), Spacer(1, 2 * mm),
@@ -816,7 +816,7 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
 
     def build_diagrams_block(specs):
         """
-        Stack several diagram rows into a single flowable, with a horizontal 
+        Stack several diagram rows into a single flowable, with a horizontal
         separator line between each consecutive pair of diagrams. Returned as
         one Table so it can be measured as a unit and handed to
         VCenterFlowable to be centered vertically as a whole block.
@@ -920,7 +920,7 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
     side_pad = (col_w - card_w) / 2.0
 
     metrics_side_by_side = Table([[card_a, card_b]], colWidths=[col_w, col_w], hAlign='CENTER')
-    metrics_side_by_side.setStyle(TableStyle([ 
+    metrics_side_by_side.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), # the shorter card (no "better run" box/label) is vertically centered against the taller one within the same row,
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('LEFTPADDING', (0, 0), (-1, -1), side_pad),
@@ -966,8 +966,8 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
         t_reorder = Table(reordered_rows, colWidths=[content_w / 3.0] * 3, hAlign='CENTER')
         t_reorder.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LINEBELOW', (0, 0), (-1, 0), 0.75, COLOR_BLACK),   
-            ('LINEBELOW', (0, 1), (-1, -1), 0.5, COLOR_BLACK),  
+            ('LINEBELOW', (0, 0), (-1, 0), 0.75, COLOR_BLACK),
+            ('LINEBELOW', (0, 1), (-1, -1), 0.5, COLOR_BLACK),
             ('TOPPADDING', (0, 0), (-1, -1), 2.5 * mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5 * mm),
         ]))
