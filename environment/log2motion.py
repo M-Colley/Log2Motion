@@ -111,8 +111,6 @@ class Log2Motion:
                     if resting_position:
                         self._move_to_resting_position_with_time_interrupt(self.policies["default"], swipe=True)
                     self._group_episodes(first_episode, outcome)
-            elif kind == "STATUS_TASK_COMPLETE" and resting_position:
-                self._move_to_resting_position_with_time_interrupt(self.policies["default"])
             if progress_callback is not None:
                 progress_callback(index, total)
             if kind == "STATUS_TASK_COMPLETE":
@@ -199,10 +197,14 @@ class Log2Motion:
                     sample["contact_information"] = 0
                 samples.append(sample)
                 if swipe and self.env.use_android:
-                    norm_x, norm_y = self.env.normalize_iftip_position(sample["IFtip_pos"])
-                    height, width = self.env.screen_resolution
-                    last_xy = (int(norm_x * (width - 1)), int(norm_y * (height - 1)))
-                    self.env.call_screen([[*last_xy, True, 0]])
+                    if sample["contact_information"] in (1, 2):
+                        norm_x, norm_y = self.env.normalize_iftip_position(sample["IFtip_pos"])
+                        height, width = self.env.screen_resolution
+                        last_xy = (int(norm_x * (width - 1)), int(norm_y * (height - 1)))
+                        self.env.call_screen([[*last_xy, True, 0]])
+                    elif last_xy is not None:
+                        self.env.call_screen([[*last_xy, False, 0]])
+                        last_xy = None
                 if self.collect_frames:
                     # Keep one continuous video clock across tap/drag/release
                     # phases, without duplicating frames at phase boundaries.

@@ -11,6 +11,7 @@ import sys
 import tempfile
 
 from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosed
 
 from . import history
 from .preparation import reduce_data_for_figma
@@ -151,8 +152,9 @@ class BridgeServer:
                         "history_data": history.get_formatted_history_for_ui(active_id),
                         "session_id": active_id})
         elif kind == "GET_HISTORY_DATA":
-            await send({"type": "HISTORY_DATA", "data": history.get_formatted_history_for_ui(msg.get("session_id")),
-                        "session_id": msg.get("session_id")})
+            session_id = msg.get("session_id") or history.get_session_overview().get("activeSessionId")
+            await send({"type": "HISTORY_DATA", "data": history.get_formatted_history_for_ui(session_id),
+                        "session_id": session_id})
         elif kind == "COMPARE_RUNS":
             await send({"type": "COMPARISON_RESULT", "data": history.compare_runs(
                 msg.get("run_a_id"), msg.get("run_b_id"), msg.get("session_id"))})
@@ -160,13 +162,17 @@ class BridgeServer:
             charts = msg.get("charts", {})
             if not isinstance(charts, dict):
                 raise ValueError("Chart images must be an object.")
-            updated = history.save_charts_to_history(msg.get("session_id"), msg.get("run_id"), charts)
-            await send({"type": "CHARTS_SAVED", "history_data": updated})
+            session_id = msg.get("session_id") or history.get_session_overview().get("activeSessionId")
+            updated = history.save_charts_to_history(session_id, msg.get("run_id"), charts)
+            await send({"type": "CHARTS_SAVED", "history_data": updated,
+                        "session_id": session_id, "run_id": msg.get("run_id")})
         elif kind == "GET_RUN_DIAGRAMS":
-            runs = history.get_formatted_history_for_ui(msg.get("sessionId"))
+            session_id = msg.get("sessionId") or history.get_session_overview().get("activeSessionId")
+            runs = history.get_formatted_history_for_ui(session_id)
             run = next((run for run in runs if str(run["id"]) == str(msg.get("runId"))), {})
             await send({"type": "SINGLE_RUN_DIAGRAMS", "runId": msg.get("runId"),
-                        "runIndex": msg.get("runIndex"), "images": run.get("chart_images", {})})
+                        "sessionId": session_id, "runIndex": msg.get("runIndex"),
+                        "images": run.get("chart_images", {})})
         elif kind in ("DOWNLOAD_SINGLE_RUN_PDF", "DOWNLOAD_COMPARE_RUNS_PDF"):
             from . import reports
             runs = history.get_formatted_history_for_ui(msg.get("sessionId") or msg.get("session_id"))
@@ -194,9 +200,13 @@ class BridgeServer:
                 raise ValueError("visualization must be true or false.")
             data = msg.get("data")
             episodes = transform_figma_data(data)
-            session_id = history.get_session_overview().get("activeSessionId")
+            overview = history.get_session_overview()
+            session_id = msg.get("session_id") or overview.get("activeSessionId")
             if not session_id:
                 raise ValueError("Create or select a session before starting a simulation.")
+            session_id = str(session_id)
+            if not any(session["id"] == session_id for session in overview.get("sessions", [])):
+                raise ValueError("The simulation's session no longer exists.")
             async def progress(current, total):
                 await send({"type": "SIM_PROGRESS", "current": current, "total": total})
             async with self.simulation_lock:
@@ -216,18 +226,39 @@ class BridgeServer:
     async def handler(self, websocket):
         async def send(payload):
             await websocket.send(json.dumps(payload, allow_nan=False))
-        async for message in websocket:
-            kind = None
-            try:
-                msg = json.loads(message)
-                kind = msg.get("type") if isinstance(msg, dict) else None
-                await self.dispatch(msg, send)
-            except (ValueError, TypeError, KeyError, OSError, TimeoutError) as exc:
-                error_type = "SIM_ERROR" if kind == "START_SIM" else "PDF_ERROR" if kind in (
-                    "DOWNLOAD_SINGLE_RUN_PDF", "DOWNLOAD_COMPARE_RUNS_PDF") else "ERROR"
-                error = str(exc) or (f"Simulation timed out after {SIMULATION_TIMEOUT:g} seconds."
-                                     if isinstance(exc, TimeoutError) else type(exc).__name__)
-                await send({"type": error_type, "status": "error", "error": error, "message": error})
+        disconnected = asyncio.create_task(websocket.wait_closed())
+        request = None
+        try:
+            async for message in websocket:
+                kind = None
+                try:
+                    msg = json.loads(message)
+                    kind = msg.get("type") if isinstance(msg, dict) else None
+                    request = asyncio.create_task(self.dispatch(msg, send))
+                    done, _ = await asyncio.wait((request, disconnected), return_when=asyncio.FIRST_COMPLETED)
+                    if disconnected in done:
+                        # An abandoned subprocess must not retain the global simulation lock.
+                        request.cancel()
+                        await asyncio.gather(request, return_exceptions=True)
+                        return
+                    await request
+                except (ValueError, TypeError, KeyError, OSError, TimeoutError) as exc:
+                    error_type = "SIM_ERROR" if kind == "START_SIM" else "PDF_ERROR" if kind in (
+                        "DOWNLOAD_SINGLE_RUN_PDF", "DOWNLOAD_COMPARE_RUNS_PDF") else "ERROR"
+                    error = str(exc) or (f"Simulation timed out after {SIMULATION_TIMEOUT:g} seconds."
+                                         if isinstance(exc, TimeoutError) else type(exc).__name__)
+                    await send({"type": error_type, "status": "error", "error": error, "message": error,
+                                "request_type": kind,
+                                **({"session_id": msg.get("session_id"), "run_id": msg.get("run_id")}
+                                   if kind == "SAVE_SIMULATION_CHARTS" else {})})
+        except ConnectionClosed:
+            pass
+        finally:
+            tasks = [disconnected] + ([request] if request is not None else [])
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def main():

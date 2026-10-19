@@ -383,7 +383,7 @@ def generate_single_run_pdf(run):
         # Dynamically determine how many columns are required.
         num_cols = min(math.ceil(num_elements / float(max_rows)), 3)
 
-        col_items = [[] for _ in range(num_cols)]
+        rows = [[[] for _ in range(num_cols)] for _ in range(max_rows)]
 
         # Fill in the columns.
         for i, el in enumerate(elements):
@@ -392,14 +392,14 @@ def generate_single_run_pdf(run):
 
             target_col = min(i // max_rows, num_cols - 1)
 
-            col_items[target_col].append(make_dot_item(name, color))
-            col_items[target_col].append(Spacer(1, 2 * mm))
+            rows[i % max_rows][target_col] = [make_dot_item(name, color), Spacer(1, 2 * mm)]
 
         # Calculate the column widths.
         elements_table_width = content_w * 0.90
         calc_col_width = elements_table_width / float(num_cols)
 
-        t_elements = Table([col_items], colWidths=[calc_col_width] * num_cols, hAlign='CENTER')
+        t_elements = Table(rows, colWidths=[calc_col_width] * num_cols,
+                           hAlign='CENTER', splitInRow=1)
         t_elements.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -592,19 +592,19 @@ def generate_compare_runs_pdf(run_a, run_b, diff):
         # Up to 4 rows per column before a new column is started (max 3 columns).
         max_rows = max(4, math.ceil(num_elements / 3.0))
         num_cols = min(math.ceil(num_elements / float(max_rows)), 3)
-        col_items = [[] for _ in range(num_cols)]
+        rows = [[[] for _ in range(num_cols)] for _ in range(max_rows)]
 
         for i, el in enumerate(elements):
             name = el if isinstance(el, str) else el.get('name', 'Unknown')
             color = DOT_COLORS[i % len(DOT_COLORS)]
             target_col = min(i // max_rows, num_cols - 1)
-            col_items[target_col].append(make_dot_item(str(name), color))
-            col_items[target_col].append(Spacer(1, 2 * mm))
+            rows[i % max_rows][target_col] = [make_dot_item(str(name), color), Spacer(1, 2 * mm)]
 
         elements_table_width = content_w * 0.90
         calc_col_width = elements_table_width / float(num_cols)
 
-        table = Table([col_items], colWidths=[calc_col_width] * num_cols, hAlign='CENTER')
+        table = Table(rows, colWidths=[calc_col_width] * num_cols,
+                      hAlign='CENTER', splitInRow=1)
         table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),

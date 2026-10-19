@@ -78,11 +78,18 @@ def get_session_overview():
     it doesn't exist yet."""
     default_overview = {
         "count": 0,
+        "last_session_id": 0,
         "activeSessionId": None,
         "sessions": []
     }
 
-    return load_json_file(SESSION_OVERVIEW_FILE, default_value=default_overview)
+    overview = load_json_file(SESSION_OVERVIEW_FILE, default_value=default_overview)
+    # Migrate old overviews before deletion can erase their highest session ID.
+    overview["last_session_id"] = max(
+        int(overview.get("last_session_id", 0)),
+        max((int(session["id"]) for session in overview.get("sessions", [])), default=0),
+    )
+    return overview
 
 
 def update_overview_file(sessions, active_session_id=None):
@@ -106,6 +113,8 @@ def update_overview_file(sessions, active_session_id=None):
 
     overview_data = {
         "count": len(sessions),
+        "last_session_id": max(current_overview["last_session_id"],
+                               max((int(session["id"]) for session in sessions), default=0)),
         "activeSessionId": active_session_id,
         "sessions": sessions
     }
@@ -134,9 +143,8 @@ def add_session(session_name=None):
     overview = get_session_overview()
     sessions = overview.get("sessions", [])
 
-    # Determine the next available id (1-4).
-    existing_ids = [int(s["id"]) for s in sessions if s["id"].isdigit()]
-    next_id = str(max(existing_ids) + 1) if existing_ids else "1"
+    # Never reuse a deleted identity: delayed results/charts can still refer to it.
+    next_id = str(overview["last_session_id"] + 1)
 
     if not session_name:
         session_name = f"Session {next_id}"
@@ -535,10 +543,13 @@ def save_charts_to_history(session_id, run_id, chart_images):
     active_session = next((s for s in overview.get("sessions", []) if s["id"] == active_id), None)
 
     if not active_session:
-        return []
+        raise ValueError("The chart's session no longer exists.")
 
     change_file = active_session["files"]["change_history"]
     change_hist = load_json_file(change_file, [])
+
+    if not change_hist:
+        raise ValueError("The requested run is no longer in history.")
 
     if change_hist:
         target_run = change_hist[-1]

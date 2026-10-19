@@ -54,9 +54,21 @@ def main(argv=None):
         code = 1
     finally:
         if env is not None:
-            env.close()
+            try:
+                env.close()
+            except Exception as exc:
+                if code == 0:
+                    output = {"status": "error", "message": str(exc), "error": str(exc)}
+                else:
+                    output["cleanup_error"] = str(exc)
+                code = 1
+    try:
+        payload = json.dumps(output, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        payload = json.dumps({"status": "error", "message": str(exc), "error": str(exc)})
+        code = 1
     print("---DATA_START---", flush=True)
-    print(json.dumps(output, allow_nan=False), flush=True)
+    print(payload, flush=True)
     print("---DATA_END---", flush=True)
     return code
 

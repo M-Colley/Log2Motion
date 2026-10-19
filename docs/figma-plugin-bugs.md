@@ -2,6 +2,9 @@
 
 Date: 20 October 2026
 
+See the [additional bug audit](additional-bug-audit.md) for the subsequent review
+of the maintained plugin, simulator, bridge, and upstream libraries.
+
 This report covers the supplied `ba_louisa_mathes_figma_log2motion-v1.0.0`
 project: its Figma plugin and the Python `Interface` bridge it depends on.
 The original source files were not edited. Fixes are implemented in this

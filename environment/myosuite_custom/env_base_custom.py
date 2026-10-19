@@ -101,7 +101,10 @@ class MujocoEnvCustom(MyoGymnasiumEnv):
         renderer.set_viewer_settings(render_actuator=render_actuator, render_tendon=render_tendon)
 
     def close(self):
-        super().close()
         android = getattr(self, "and_instance", None)
-        if android is not None:
-            android.close()
+        self.and_instance = None
+        try:
+            super().close()
+        finally:
+            if android is not None:
+                android.close()

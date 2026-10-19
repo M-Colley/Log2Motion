@@ -46,7 +46,11 @@ class BaseV0Custom(MujocoEnvCustom):
         if kwargs.get("seed") is not None:
             self.seed(kwargs["seed"])
         if fatigue_reset and self.muscle_condition == "fatigue":
-            self.muscle_fatigue.reset(fatigue_reset_vec=self.fatigue_reset_vec,
+            # MyoSuite 3.0.0 aliases float64 reset vectors and mutates them
+            # while stepping fatigue. Keep the caller's fixed reset state.
+            reset_vector = None if self.fatigue_reset_vec is None else np.array(
+                self.fatigue_reset_vec, dtype=float, copy=True)
+            self.muscle_fatigue.reset(fatigue_reset_vec=reset_vector,
                                      fatigue_reset_random=self.fatigue_reset_random,
                                      np_random=self.np_random)
         return super().reset(**kwargs)

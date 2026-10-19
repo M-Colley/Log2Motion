@@ -2930,6 +2930,10 @@
       let isDeletingSession = false;
       let selectedSessionId = null;
       let activeSessionId = null;
+      let requestedSessionId = null;
+      let simulationInFlight = false;
+      let simulationOptions = null;
+      let simulationElements = [];
 
       // Escape HTML special characters so untrusted strings (session/element
       // names) can't inject markup when inserted via innerHTML.
@@ -3041,7 +3045,7 @@
         };
 
         const sessions = currentOverview.sessions || [];
-        const activeSessionId = currentOverview.activeSessionId;
+        activeSessionId = currentOverview.activeSessionId;
         const sessionListContainer = document.getElementById("sessionList");
         const newSessionForm = document.getElementById("newSessionForm");
 
@@ -3480,6 +3484,20 @@
         startBtn.style.color = "";
       }
 
+      function recoverSimulationControls() {
+        simulationInFlight = false;
+        const startBtn = document.getElementById("startBtn");
+        if (startBtn) startBtn.disabled = false;
+        const toggle = document.getElementById("toggle");
+        if (toggle) toggle.disabled = false;
+        if (backBtn) backBtn.classList.remove("hidden");
+        if (historyBtn) historyBtn.classList.remove("hidden");
+        const animation = document.getElementById("lizardVideo");
+        if (animation) { animation.pause(); animation.currentTime = 0; }
+        setStartBtnLabel("Start Simulation");
+        resetStartBtnProgress();
+      }
+
       // Create a visual effect for the start button to indicate that the simulation has ended.
       function pulseStartBtn(label = "Simulation finished") {
         const startBtn = document.getElementById("startBtn");
@@ -3550,6 +3568,8 @@
 
       // Start the simulation for the current click path.
       document.getElementById("startBtn").addEventListener("click", () => {
+        const startBtn = document.getElementById("startBtn");
+        startBtnPulseToken += 1;
         hasSimulationRun = false;
         startBtn.disabled = true;
         resetStartBtnProgress();
@@ -3558,6 +3578,7 @@
         if (historyBtn) historyBtn.classList.add("hidden");
         const toggleInput = document.getElementById("toggle");
         const isVisualizationOn = toggleInput ? toggleInput.checked : false;
+        simulationOptions = {visualization: isVisualizationOn, session_id: getCurrentSessionId()};
         if (toggleInput) {
           toggleInput.disabled = true;
         }
@@ -3581,9 +3602,7 @@
 
         // Reset the results containers.
         const resultsContainer = document.getElementById("results");
-        if ((resultsContainer.style.display = "block")) {
-          resultsContainer.style.display = "none";
-        }
+        if (resultsContainer) resultsContainer.style.display = "none";
 
         // Collapse every diagram back to its default hidden state before the new run's results come in.
         const canvases = document.querySelectorAll(".diagram-canvas");
@@ -3750,6 +3769,8 @@
       let muscleCostChart = null;
       let trajectoryChart = null;
       let contactChart = null;
+      let pendingChartSnapshot = null;
+      const pendingChartUploads = new Map();
 
       // TThis list stores the thumbnails drawn for the Click Timeline diagram
       // (position + size + source image), and the makeThumbnailPlugin updates
@@ -3808,7 +3829,6 @@
       // the image has either been loaded or the loading process has failed. This is used
       // to delay the export of the diagrams until all thumbnail images are ready – otherwise,
       // the export might create a snapshot of the drawing area before the images have actually been drawn.
-      const thumbnailLoadPromises = [];
 
       // Shared color palette so the same click has the same color in every diagram.
       const colors = [
@@ -3935,7 +3955,7 @@
         return `${summary.failed} of ${summary.total} gestures did not complete successfully.${timeout}${unknown} Charts include these failed trajectories.`;
       }
 
-      function renderOutcomeWarning(simulationResult) {
+      function renderOutcomeWarning(simulationResult, elements = selectedElements) {
         const warning = document.getElementById("simulationOutcomeWarning");
         if (!warning) return;
         const summary = simulationResult.outcome_summary;
@@ -3943,15 +3963,27 @@
         warning.textContent = outcomeDescription(summary);
         const failedClicks = (simulationResult.episodes || []).flatMap((episode, index) => {
           if (episode.outcome?.is_success !== false) return [];
-          const name = selectedElements?.[index]?.name || `Click ${index + 1}`;
+          const name = elements?.[index]?.name || `Click ${index + 1}`;
           return [`${index + 1}. ${name}${episode.outcome.truncated ? " (timed out)" : " (failed)"}`];
         });
         if (failedClicks.length) warning.textContent += ` Affected clicks: ${failedClicks.join("; ")}.`;
       }
 
+      function chartTiming(data, count) {
+        const dt = Number.isFinite(data.dt) && data.dt > 0 ? data.dt : 0.01;
+        const start = Number.isFinite(data.start_time) ? data.start_time : 0;
+        const validTimes = Array.isArray(data.times) && data.times.length === count &&
+          data.times.every((time, index) => Number.isFinite(time) && time >= 0 &&
+            (index === 0 || time >= data.times[index - 1]));
+        const sampleTimes = validTimes ? [...data.times] : Array.from({length: count}, (_, index) => start + index * dt);
+        const lastTime = sampleTimes.at(-1) || 0;
+        const duration = Number.isFinite(data.duration) && data.duration >= lastTime ? data.duration : lastTime;
+        return {sampleTimes, duration};
+      }
+
       // Build the Muscle Cost, Finger Trajectory, and Click Timeline charts from
       // one simulation run, then export them to the server for this runs history.
-      function visualizeSimualtionResults(simulationResult) {
+      function visualizeSimualtionResults(simulationResult, elements = selectedElements) {
         if (
           !simulationResult.episodes ||
           simulationResult.episodes.length === 0
@@ -3959,6 +3991,12 @@
           console.warn("No simulation data received.");
           return;
         }
+        // Capture an earlier run before its canvases are destroyed below.
+        finalizeChartSnapshot(pendingChartSnapshot);
+        const clickElements = elements.map((element) => ({...element}));
+        const thumbnailLoadPromises = [];
+        let runContactChart = null;
+        contactThumbnailRects = [];
 
         // Build a legend entry for a dataset.
         function dashAwareLegendItem(ds, datasetIndex, chart) {
@@ -3982,7 +4020,6 @@
         let cursor = 0;
         const episodesData = simulationResult.episodes.map((ep, index) => {
           const data = ep.data || {};
-          const dt = data.dt || 0.01;
           const trajectory = data.trajectory || [];
           const muscleCosts = data.muscle_costs || [];
           const contactIndices = (data.contact_indices || []).filter(
@@ -3992,21 +4029,24 @@
           const clickIndex = index;
 
           const steps = Math.max(trajectory.length, muscleCosts.length);
+          const {sampleTimes, duration} = chartTiming(data, steps);
           const startTime = cursor;
-          cursor += steps * dt;
+          cursor += duration;
 
-          const node = selectedElements && selectedElements[clickIndex];
+          const node = clickElements[clickIndex];
           const elementName =
             node && node.name ? node.name : `Element ${clickIndex + 1}`;
           const label = `${clickIndex + 1}. ${elementName}`;
 
           return {
             index,
-            dt,
+            sampleTimes,
+            duration,
             trajectory,
             muscleCosts,
             contactIndices,
             startTime,
+            costStartTime: startTime,
             clickIndex,
             label,
             color: colors[clickIndex % colors.length],
@@ -4053,7 +4093,7 @@
               clickStarts.forEach((ep) => {
                 if (!chart.isDatasetVisible(ep.index)) return;
 
-                const xPixel = xScale.getPixelForValue(ep.startTime);
+                const xPixel = xScale.getPixelForValue(ep.costStartTime);
                 if (xPixel >= chartArea.left && xPixel <= chartArea.right) {
                   if (!isFirstVisible) {
                     ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
@@ -4151,7 +4191,7 @@
                   ep.muscleCosts.reduce((sum, v) => sum + v, 0) /
                   ep.muscleCosts.length;
                 const midTime =
-                  ep.startTime + (ep.muscleCosts.length * ep.dt) / 2;
+                  ep.costStartTime + ep.duration / 2;
 
                 const x = xScale.getPixelForValue(midTime);
                 const y = yScale.getPixelForValue(0.00175);
@@ -4182,7 +4222,7 @@
         const costDatasets = episodesData.map((ep) => ({
           label: ep.label,
           data: ep.muscleCosts.map((cost, i) => ({
-            x: +(ep.startTime + i * ep.dt).toFixed(3),
+            x: +(ep.costStartTime + ep.sampleTimes[i]).toFixed(3),
             y: cost,
           })),
           borderColor: ep.color,
@@ -4201,7 +4241,7 @@
           costDatasets.push({
             label: CLICK_CONTACT_LABEL,
             data: ep.contactIndices.map((idx) => ({
-              x: +(ep.startTime + idx * ep.dt).toFixed(3),
+              x: +(ep.costStartTime + ep.sampleTimes[idx]).toFixed(3),
               y: ep.muscleCosts[idx] ?? 0,
             })),
             showLine: false,
@@ -4311,23 +4351,22 @@
           episodesData.forEach((ep) => {
             if (!muscleCostChart.isDatasetVisible(ep.index)) return;
 
-            ep.startTime = localCursor;
+            ep.costStartTime = localCursor;
 
             costDatasets[ep.index].data = ep.muscleCosts.map((cost, i) => ({
-              x: +(ep.startTime + i * ep.dt).toFixed(3),
+              x: +(ep.costStartTime + ep.sampleTimes[i]).toFixed(3),
               y: cost,
             }));
 
             const contactIdx = contactDatasetIndexByEpisode[ep.index];
             if (contactIdx !== undefined) {
               costDatasets[contactIdx].data = ep.contactIndices.map((idx) => ({
-                x: +(ep.startTime + idx * ep.dt).toFixed(3),
+                x: +(ep.costStartTime + ep.sampleTimes[idx]).toFixed(3),
                 y: ep.muscleCosts[idx] ?? 0,
               }));
             }
 
-            const steps = Math.max(ep.trajectory.length, ep.muscleCosts.length);
-            localCursor += steps * ep.dt;
+            localCursor += ep.duration;
           });
 
           muscleCostChart.options.scales.x.max = Math.max(
@@ -4413,7 +4452,7 @@
                       if (!ep) return "";
 
                       const node =
-                        selectedElements && selectedElements[ep.clickIndex];
+                        clickElements[ep.clickIndex];
                       const elementName = (node && node.name) || ep.label;
 
                       const isContact = ep.contactIndices.includes(
@@ -4467,7 +4506,7 @@
         // Preload an element's figma thumbnail as an image so it can be drawn
         // on the canvas once it has beeb loaded. After that redraw the chart.
         function loadElementThumbnail(ep) {
-          const node = selectedElements && selectedElements[ep.clickIndex];
+          const node = clickElements[ep.clickIndex];
           const src = node && node.thumbnail;
           if (!src) return null;
 
@@ -4475,7 +4514,7 @@
           thumbnailLoadPromises.push(
             new Promise((resolve) => {
               img.onload = () => {
-                if (contactChart) contactChart.draw();
+                if (runContactChart?.canvas) runContactChart.draw();
                 resolve();
               };
               // Export the remaining diagrams even if one thumbnail is faulty.
@@ -4533,7 +4572,7 @@
                 .map(({ ep, image }) => {
                   const idx = ep.contactIndices[0];
                   const x = xScale.getPixelForValue(
-                    +(ep.startTime + idx * ep.dt).toFixed(3),
+                    +(ep.startTime + ep.sampleTimes[idx]).toFixed(3),
                   );
                   const y = yScale.getPixelForValue(ep.clickIndex + 1);
                   return { ep, image, x, y };
@@ -4655,7 +4694,7 @@
             // Convert each contact's step index into an absolute time value on
             // the shared time axis.
             const contactPoints = ep.contactIndices.map((idx) => ({
-              x: +(ep.startTime + idx * ep.dt).toFixed(3),
+              x: +(ep.startTime + ep.sampleTimes[idx]).toFixed(3),
               y: ep.clickIndex + 1,
             }));
 
@@ -4769,54 +4808,65 @@
           ],
         });
 
-        // Wait for every element thumbnail to finish loading (max 2s) before
-        // snapshotting the charts for history.
-        Promise.race([
-          Promise.all(thumbnailLoadPromises),
-          new Promise((resolve) => setTimeout(resolve, 2000)),
-        ]).then(() => exportChartsToServer(simulationResult));
+        runContactChart = contactChart;
+        exportChartsToServer(simulationResult, {
+          muscleCost: muscleCostChart, trajectory: trajectoryChart, contactEvents: contactChart,
+        }, thumbnailLoadPromises);
       }
 
       // Render each chart at high resolution and send the resulting PNGs to
       // the server to store alongside this run's history record.
-      function exportChartsToServer(simulationResult) {
-        setTimeout(() => {
-          const chartsMap = {
-            muscleCost: muscleCostChart,
-            trajectory: trajectoryChart,
-            contactEvents: contactChart,
-          };
-
+      function finalizeChartSnapshot(snapshot) {
+        if (!snapshot || snapshot.finalized) return;
+        snapshot.finalized = true;
+        try {
           const chartImages = {};
-
-          Object.keys(chartsMap).forEach((key) => {
-            const chart = chartsMap[key];
+          Object.entries(snapshot.charts).forEach(([key, chart]) => {
             if (chart) {
               // Temporarily switch to a large, high-DPI canvas so the exported
               // PNG stays sharp even shown bigger later,
               // then restore the chart's normal on-screen size.
               const originalRatio = chart.options.devicePixelRatio;
-              chart.options.devicePixelRatio = 3;
-              chart.resize(900, 900);
-              chart.render();
-              chartImages[key] = chart.toBase64Image("image/png", 1.0);
-              chart.options.devicePixelRatio =
-                originalRatio || window.devicePixelRatio;
-              chart.resize();
+              try {
+                chart.options.devicePixelRatio = 3;
+                chart.resize(900, 900);
+                chart.render();
+                chartImages[key] = chart.toBase64Image("image/png", 1.0);
+              } finally {
+                chart.options.devicePixelRatio = originalRatio;
+                chart.resize();
+              }
             }
           });
+          const payload = {type: "SAVE_SIMULATION_CHARTS", session_id: snapshot.sessionId,
+                           run_id: snapshot.runId, charts: chartImages};
+          pendingChartUploads.set(chartUploadKey(payload.session_id, payload.run_id), {payload, sent: false});
+          flushChartUploads();
+        } catch (error) {
+          console.error("Chart snapshot failed:", error);
+        } finally {
+          if (pendingChartSnapshot === snapshot) pendingChartSnapshot = null;
+        }
+      }
 
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                type: "SAVE_SIMULATION_CHARTS",
-                session_id: simulationResult.session_id || getCurrentSessionId(),
-                run_id: simulationResult.run_id,
-                charts: chartImages,
-              }),
-            );
+      function chartUploadKey(sessionId, runId) { return JSON.stringify([String(sessionId), String(runId)]); }
+
+      function flushChartUploads() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        for (const upload of pendingChartUploads.values()) {
+          if (!upload.sent) {
+            ws.send(JSON.stringify(upload.payload));
+            upload.sent = true;
           }
-        }, 250);
+        }
+      }
+
+      function exportChartsToServer(simulationResult, charts, thumbnailPromises = []) {
+        const snapshot = {charts, runId: simulationResult.run_id,
+          sessionId: simulationResult.session_id || getCurrentSessionId(), finalized: false};
+        pendingChartSnapshot = snapshot;
+        Promise.race([Promise.all(thumbnailPromises),
+          new Promise((resolve) => setTimeout(resolve, 2000))]).then(() => finalizeChartSnapshot(snapshot));
       }
 
       // ----------------------------------------
@@ -5979,6 +6029,7 @@
         requestAssets();
         requestSessions();
         requestTutorialVideo();
+        flushChartUploads();
 
         // Flush a simulation request that came in while disconnected.
         if (pendingPayload) {
@@ -6004,6 +6055,8 @@
       // If the client failed to connect show/update the overlay and
       // schedule another connection attempt with a growing backoff.
       function handleWebSocketClose() {
+        for (const upload of pendingChartUploads.values()) upload.sent = false;
+        if (simulationInFlight) recoverSimulationControls();
         connectionEpoch += 1;
         reconnectAttempts += 1;
 
@@ -6272,6 +6325,7 @@
         ws.send(
           JSON.stringify({
             type: "GET_HISTORY_DATA",
+            session_id: getCurrentSessionId(),
           }),
         );
       }
@@ -6296,27 +6350,21 @@
 
       // Send the current click-path data to the server to start a simulation
       // run, including whether visualisation is enabled.
-      function sendStartSimulation(jsonPayload) {
+      function sendStartSimulation(request) {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        const toggleButton = document.getElementById("toggle");
-        const isVisualizationOn = toggleButton ? toggleButton.checked : false;
-
-        const dataToSend = {
-          type: "START_SIM",
-          visualization: isVisualizationOn,
-          data: jsonPayload,
-        };
-
-        ws.send(JSON.stringify(dataToSend));
+        ws.send(JSON.stringify(request));
+        simulationElements = (request.data?.nodes || []).map((node) => ({...node}));
+        simulationInFlight = true;
       }
 
       // Tell the server which session is now active, showing a loading
       // placeholder in the history list while its history is fetched.
       function selectSessionOnServer(sessionId) {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        requestedSessionId = String(sessionId);
 
         const historyListContainer = document.getElementById("historyList");
         if (historyListContainer) {
@@ -6415,12 +6463,14 @@
 
       function connectWebSocket() {
         try {
-          ws = new WebSocket("ws://localhost:8080");
+          const socket = new WebSocket("ws://localhost:8080");
+          ws = socket;
 
-          ws.onopen = handleWebSocketOpen;
+          ws.onopen = () => { if (ws === socket) handleWebSocketOpen(); };
 
           // Process server messages.
           ws.onmessage = (event) => {
+            if (ws !== socket) return;
             try {
               const response = JSON.parse(event.data);
 
@@ -6517,6 +6567,9 @@
                 const currentSessionId =
                   response.session_id ||
                   response.session_overview?.activeSessionId;
+                if (response.type === "SESSION_CHANGED" && requestedSessionId !== null &&
+                    String(currentSessionId) !== requestedSessionId) return;
+                requestedSessionId = null;
                 if (response.session_overview) {
                   renderSessionList(response.session_overview);
                 }
@@ -6531,17 +6584,14 @@
                 setStartBtnProgress(response.current, response.total);
               } else if (response.type === "SIM_ERROR") {
                 // Make sure a failed run doesn't leave the button stuck disabled/mid-progress with no way to try again.
-                const startBtn = document.getElementById("startBtn");
-                if (startBtn) {
-                  startBtn.disabled = false;
-                }
-                setStartBtnLabel("Start Simulation");
-                resetStartBtnProgress();
+                recoverSimulationControls();
                 alert("Simulation error: " + response.error);
               } else if (response.type === "RESULT") {
+                simulationInFlight = false;
                 // Convert the simulation results into diagrams.
-                visualizeSimualtionResults(response.data);
-                renderOutcomeWarning(response.data);
+                const elements = simulationElements.length ? simulationElements : selectedElements;
+                visualizeSimualtionResults(response.data, elements);
+                renderOutcomeWarning(response.data, elements);
                 hasSimulationRun = true;
 
                 // Reveal the metrics interface.
@@ -6573,6 +6623,7 @@
                   toggleInput.disabled = false;
                 }
               } else if (response.type === "HISTORY_DATA") {
+                if (response.session_id != null && String(response.session_id) !== String(getCurrentSessionId())) return;
                 // Get the run data from the server to display the data on the history screen accordingly.
                 renderHistoryList(response.data, response.session_id);
               } else if (response.type === "COMPARISON_RESULT") {
@@ -6599,16 +6650,20 @@
                 const runIndex = parseInt(response.runIndex, 10);
                 const runId = response.runId;
                 const images = response.images;
+                if (response.sessionId != null && String(response.sessionId) !== String(getCurrentSessionId())) return;
 
                 if (Number.isNaN(runIndex)) {
                   console.error("Invalid runIndex:", response.runIndex);
                   return;
                 }
 
-                if (currentHistoryRuns[runIndex]) {
+                if (currentHistoryRuns[runIndex] && String(currentHistoryRuns[runIndex].id) === String(runId)) {
                   currentHistoryRuns[runIndex].images = images;
-
-                  renderRunChartsFromData(runIndex, images);
+                  if (runIndex === selectedIndexSingle) renderRunChartsFromData(runIndex, images);
+                }
+              } else if (response.type === "CHARTS_SAVED") {
+                if (response.session_id != null && response.run_id != null) {
+                  pendingChartUploads.delete(chartUploadKey(response.session_id, response.run_id));
                 }
               } else if (
                 response.type === "SINGLE_RUN_PDF" ||
@@ -6636,6 +6691,9 @@
                 alert("PDF generation error: " + response.error);
                 return;
               } else if (response.type === "ERROR") {
+                if (response.request_type === "SAVE_SIMULATION_CHARTS") {
+                  pendingChartUploads.delete(chartUploadKey(response.session_id, response.run_id));
+                }
                 alert(response.error || response.message || "The server could not complete this request.");
               }
             } catch (error) {
@@ -6650,7 +6708,7 @@
 
           // If the connection is lost or if a connection could not be established at the very start,
           // display this in the overlay and try to establish a connection again.
-          ws.onclose = handleWebSocketClose;
+          ws.onclose = () => { if (ws === socket) handleWebSocketClose(); };
         } catch (error) {
           console.error("Error:", error);
           handleWebSocketClose();
@@ -6938,10 +6996,7 @@
         }
 
         if (msg.type === "EXPORT_ERROR") {
-          const startBtn = document.getElementById("startBtn");
-          if (startBtn) startBtn.disabled = false;
-          setStartBtnLabel("Start Simulation");
-          resetStartBtnProgress();
+          recoverSimulationControls();
           alert(msg.error);
           return;
         }
@@ -6949,6 +7004,8 @@
         // Send the information for each element in the clickpath to the server.
         if (msg.type === "SEND_JSON") {
           const jsonPayload = msg.payload;
+          const request = {type: "START_SIM", data: jsonPayload,
+            ...(simulationOptions || {visualization: false, session_id: getCurrentSessionId()})};
 
           // Copy each node's exported thumbnail onto the matching entry in
           // selectedElements, so the click timeline chart can display it later.
@@ -6962,10 +7019,10 @@
 
           try {
             if (ws && ws.readyState === WebSocket.OPEN) {
-              sendStartSimulation(jsonPayload);
+              sendStartSimulation(request);
             } else {
               // If the connection is still being established, cache the data.
-              pendingPayload = jsonPayload;
+              pendingPayload = request;
             }
           } catch (error) {
             console.error("Error sending figma data to server:", error);

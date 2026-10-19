@@ -27,6 +27,10 @@ def reduce_data_for_figma(simulation_data, max_points=300, precision=4):
     return {"status": "success", "chart_data": {
         "start_time": round(start, precision),
         "dt": round(dt, precision) if dt is not None else None,
+        # Rounded sample indices aren't evenly spaced. Preserve actual times so
+        # the UI doesn't shift contacts or infer an inflated gesture duration.
+        "times": [round(float(point["time"]), precision) for point in points],
+        "duration": round(float(simulation_data[-1]["time"]), precision),
         "trajectory": [[round(float(v), precision) for v in point["IFtip_pos"]]
                        for point in points],
         "muscle_costs": [round(float(point["muscle_cost"]), precision) for point in points],

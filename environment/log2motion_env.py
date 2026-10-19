@@ -1,7 +1,9 @@
 import copy
 import json
 import os
+import math
 from copy import deepcopy
+from numbers import Integral, Real
 from typing import List, Tuple
 from pathlib import Path
 import gymnasium as gym
@@ -15,6 +17,18 @@ import mujoco
 from myosuite.utils.mujoco_geom_utils import refresh_geom_derived_fields
 
 
+def _positive_int(value, name):
+    if isinstance(value, bool) or not isinstance(value, Integral) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return int(value)
+
+
+def _positive_float(value, name):
+    if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive finite number")
+    return float(value)
+
+
 
 
 class Log2MotionEnv(BaseV0Custom):
@@ -25,6 +39,8 @@ class Log2MotionEnv(BaseV0Custom):
         self.contact_counter = 0
         self.last_swipe = False
         self.last_contact = False
+        self._contact_state_time = None
+        self._contact_state_before = None
         self.muscle_effort_model = None
         self.start_bar_target_name = None
         self.contact_started = False
@@ -38,7 +54,7 @@ class Log2MotionEnv(BaseV0Custom):
         self.touch_sensor_idx = None
         self.screen_touch_sensor_idx = None
         self.muscle_condition = env_config.get('muscle_condition', "")
-        self.hold_threshold = env_config.get('hold_threshold', 1)
+        self.hold_threshold = _positive_int(env_config.get('hold_threshold', 1), 'hold_threshold')
         self.hold_information = 0
         self.sigma_signal_dependent = env_config.get('sigma_signal_dependent', 0.103 * 1.0)
         self.sigma_constant = env_config.get('constant_noise_level', 0.185 * 1.0)
@@ -55,7 +71,7 @@ class Log2MotionEnv(BaseV0Custom):
         }
         android_config = env_config.get("android_config", None)
         self.screen_resolution = env_config.get('screen_resolution', [2400, 1080])
-        self.frame_skip_conf = env_config.get('frame_skip', 1)
+        self.frame_skip_conf = _positive_int(env_config.get('frame_skip', 1), 'frame_skip')
 
         self.previous_action = None
         self._elapsed_steps = 0
@@ -63,20 +79,19 @@ class Log2MotionEnv(BaseV0Custom):
         self.mistake_counter = 0
         self.mistake_counter_pos = {}
         self.use_android = env_config.get('use_android', False)
-        if self.use_android:
-            print("Starting Android emulator...")
-            self.and_instance = self._android_setup(android_config['avd_name'], android_config['android_avd_home'],
-                                                    android_config['android_sdk_root'], android_config['emulator_path'],
-                                                    android_config['adb_path'])
-            self.and_instance.launch()
-            self.image_data = None
+        if self.use_android and (not isinstance(android_config, dict) or 'avd_name' not in android_config):
+            raise ValueError("android_config must include avd_name when use_android is enabled")
         model_path = env_config['model_path']
 
-        self.MAX_TIME = env_config.get('MAX_TIME',2.5)
-        self.max_timestep = env_config.get('max_timestep', int(self.MAX_TIME / (0.002 * self.frame_skip_conf)))
+        self.MAX_TIME = _positive_float(env_config.get('MAX_TIME', 2.5), 'MAX_TIME')
+        configured_steps = env_config.get('max_timestep')
+        if configured_steps is not None:
+            configured_steps = _positive_int(configured_steps, 'max_timestep')
         self.done_th = env_config.get('max_distance_reset', 0.4)
 
         super().__init__(model_path=model_path, obsd_model_path=obsd_model_path, seed=seed)
+        self.max_timestep = configured_steps if configured_steps is not None else max(
+            1, math.ceil(self.MAX_TIME / (self.model.opt.timestep * self.frame_skip_conf)))
 
         self.sim.data.qpos[:] = self.start_qpos_data['return_qpos_button']
         self.sim.forward()
@@ -140,6 +155,18 @@ class Log2MotionEnv(BaseV0Custom):
         self.device_id = 2
         self.START_QVEL = deepcopy(self.sim.init_qvel)
         self.reset()
+        if self.use_android:
+            try:
+                print("Starting Android emulator...")
+                self.and_instance = self._android_setup(**android_config)
+                self.and_instance.launch()
+                self.image_data = None
+            except Exception as exc:
+                try:
+                    self.close()
+                except Exception as cleanup_exc:
+                    exc.add_note(f"Android startup cleanup also failed: {cleanup_exc}")
+                raise
 
     # calls BaseV0 setup method, initializes the environment with the given obs_keys, reward_keys and frame_skipping
     def _setup(self, obs_keys, weighted_reward_keys, frame_skip=10,
@@ -369,30 +396,37 @@ class Log2MotionEnv(BaseV0Custom):
         obs_dict['distance_to_target'] = np.array([current_dist_to_touch])
 
         contact_exists = self._get_contact_information(current_tip_position)
+        sample_time = float(sim.data.time)
+        if self._contact_state_time != sample_time:
+            self._contact_state_time = sample_time
+            self._contact_state_before = (self.last_contact, self.contact_counter, self.last_swipe)
+        last_contact, contact_counter, last_swipe = self._contact_state_before
         if contact_exists == 1:
-            self.last_contact = True
+            last_contact = True
         if contact_exists == 0 and self._is_point_in_range_screen(target_pos=self.target['smartphone_pos_geo'],
                                                                   target_geo_size=self.target[
                                                                       'smartphone_screen_geo_size'],
                                                                   tip_pos=current_tip_position) == 1:
             # This part check if the fingertip is touching the screen surface if yes then set the flag to 2:
             if not self.swipe:
-                if self.last_contact:
-                    self.contact_counter = 0
+                if last_contact:
+                    contact_counter = 0
                     contact_exists = 0
                 else:
                     contact_exists = 2
             else:
                 contact_exists = 2
-                self.last_swipe = True
+                last_swipe = True
         else:
-            if self.contact_counter > 20:
-                self.last_contact = False
-            self.contact_counter += 1
+            if contact_counter > 20:
+                last_contact = False
+            contact_counter += 1
             if not hasattr(self, 'swipe_entry_count'):
                 self.swipe_entry_count = 0
-            if self.last_swipe:
-                self.last_swipe = False
+            if last_swipe:
+                last_swipe = False
+
+        self.last_contact, self.contact_counter, self.last_swipe = last_contact, contact_counter, last_swipe
 
         obs_dict['contact_information'] = np.array([contact_exists], dtype=np.int32)
 
@@ -872,10 +906,10 @@ class Log2MotionEnv(BaseV0Custom):
                 self.sim.model.geom_size[self.sim.model.geom(f"{'touch_area_1'}_geom").id]).ravel()
 
     def _reset(self, reset_qpos=None, reset_qvel=None, seed=None, **kwargs):
+        full_reset = seed is not None or reset_qpos is not None or not self.initialized_env or self.outside_of_phone
         if seed is not None:
             # A seeded Gymnasium reset starts a reproducible full episode.
             reset_qpos = self.start_qpos_data['return_qpos_button'] if reset_qpos is None else reset_qpos
-            self.sim.data.act[:] = 0
             self.contact_counter = 0
             self.last_contact = False
             self.last_swipe = False
@@ -921,5 +955,8 @@ class Log2MotionEnv(BaseV0Custom):
         self.mistake_counter_pos = {}
 
         self._elapsed_steps = 0
+        self._contact_state_time = None
+        if full_reset:
+            self.sim.data.act[:] = 0
         self._reset_physics(reset_qpos, reset_qvel)
         return self.get_obs()

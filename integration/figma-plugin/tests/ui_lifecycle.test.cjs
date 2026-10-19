@@ -1,0 +1,133 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { ui, simulation } = require("./ui_harness.cjs");
+
+test("simulation failures restore navigation, visualization and paused animation", async () => {
+  const app = ui();
+  await app.document.getElementById("startBtn").dispatch("click");
+  assert.equal(app.document.getElementById("toggle").disabled, true);
+  app.sockets[0].receive({type:"SIM_ERROR", error:"Missing policy"});
+  assert.equal(app.document.getElementById("startBtn").disabled, false);
+  assert.equal(app.document.getElementById("toggle").disabled, false);
+  assert.equal(app.document.getElementById("backBtn").classList.contains("hidden"), false);
+  assert.equal(app.document.getElementById("lizardVideo").paused, true);
+});
+
+test("chart images stay with their run when the next result arrives before thumbnails", async () => {
+  const app = ui();
+  app.run('selectedElements.push({id:"A",name:"A",thumbnail:"pending-thumbnail"})');
+  app.sockets[0].receive({type:"RESULT",data:simulation("1")});
+  app.sockets[0].receive({type:"RESULT",data:simulation("2")});
+  app.images[0].onload();
+  assert.equal(app.charts[5].draws, 0, "An old thumbnail must not redraw the new run");
+  await app.flushTimers();
+  await app.flushTimers();
+  const uploads = app.sockets[0].sent.filter((message) => message.type === "SAVE_SIMULATION_CHARTS");
+  assert.equal(uploads.length, 2);
+  assert.equal(uploads.find((message) => message.run_id === "1").charts.muscleCost, "image-1");
+  assert.equal(uploads.find((message) => message.run_id === "2").charts.muscleCost, "image-4");
+});
+
+test("chart snapshot queued while disconnected is retried and matching acknowledgements clear it", async () => {
+  const app = ui();
+  app.sockets[0].receive({type:"RESULT",data:simulation("7","3")});
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose();
+  await app.flushTimers(2500);
+  await app.flushTimers(2500);
+  app.run("connectWebSocket()");
+  const reconnected = app.sockets.at(-1);
+  reconnected.onopen();
+  const upload = reconnected.sent.find((message) => message.type === "SAVE_SIMULATION_CHARTS");
+  assert.equal(upload?.session_id, "3");
+  assert.equal(upload?.run_id, "7");
+  reconnected.receive({type:"CHARTS_SAVED",session_id:"3",run_id:"7",history_data:[]});
+  assert.equal(app.run("pendingChartUploads.size"), 0);
+});
+
+test("late diagram response cannot overwrite the newly selected run", () => {
+  const app = ui();
+  app.run('currentOverview={activeSessionId:"1",sessions:[]};currentHistoryRuns=[{id:"1",metrics:{}},{id:"2",metrics:{}}];selectedIndexSingle=1');
+  app.sockets[0].receive({type:"SINGLE_RUN_DIAGRAMS",sessionId:"1",runId:"1",runIndex:0,images:{trajectory:"old"}});
+  assert.equal(app.document.getElementById("chartsSectionSingle").innerHTML.includes("old"), false);
+});
+
+test("history requests carry explicit session and stale session responses are ignored", () => {
+  const app = ui();
+  app.run('currentOverview={activeSessionId:"2",sessions:[]};requestHistoryData()');
+  assert.equal(app.sockets[0].sent.at(-1).session_id, "2");
+  app.sockets[0].receive({type:"HISTORY_DATA",session_id:"1",data:[{id:"old-session"}]});
+  assert.equal(app.run("currentHistoryRuns.length"), 0);
+});
+
+test("nonuniform sample times and exact durations position every chart point correctly", () => {
+  const app = ui();
+  const result = simulation();
+  result.episodes[0].data = {times:[0,0.02,0.09],duration:0.09,dt:0.045,start_time:0,
+    trajectory:[[0,0,0],[1,1,1],[2,2,2]],muscle_costs:[0.1,0.2,0.3],contact_indices:[1]};
+  result.episodes.push({episode_id:"episode_1",data:{times:[0.005,0.02],duration:0.02,dt:0.015,start_time:0.005,
+    trajectory:[[0,0,0],[1,1,1]],muscle_costs:[0.1,0.2],contact_indices:[1]}});
+  app.sockets[0].receive({type:"RESULT",data:result});
+  assert.deepEqual(Array.from(app.charts[0].data.datasets[0].data, (point) => point.x), [0,0.02,0.09]);
+  assert.deepEqual(Array.from(app.charts[0].data.datasets[1].data, (point) => point.x), [0.095,0.11]);
+  assert.equal(app.charts[2].data.datasets[1].data[0].x, 0.11);
+  assert.equal(app.charts[0].options.scales.x.max, 0.11 * 1.02);
+});
+
+test("legacy uniform chart timing preserves start_time and has no extra trailing interval", () => {
+  const app = ui();
+  const timing = app.run('chartTiming({start_time:0.01,dt:0.01},3)');
+  assert.deepEqual(Array.from(timing.sampleTimes), [0.01,0.02,0.03]);
+  assert.equal(timing.duration, 0.03);
+});
+
+test("stale chart errors discard only their matching queued upload", async () => {
+  const app = ui();
+  app.sockets[0].receive({type:"RESULT",data:simulation("7","3")});
+  await app.tick();
+  assert.equal(app.run("pendingChartUploads.size"), 1);
+  app.sockets[0].receive({type:"ERROR",request_type:"SAVE_SIMULATION_CHARTS",session_id:"3",run_id:"6",error:"Run removed"});
+  assert.equal(app.run("pendingChartUploads.size"), 1);
+  app.sockets[0].receive({type:"ERROR",request_type:"SAVE_SIMULATION_CHARTS",session_id:"3",run_id:"7",error:"Run removed"});
+  assert.equal(app.run("pendingChartUploads.size"), 0);
+});
+
+test("pending simulation retains its starting session and visualization through reconnect", async () => {
+  const app = ui();
+  app.run('currentOverview={activeSessionId:"3",sessions:[]}');
+  app.document.getElementById("toggle").checked = true;
+  app.context.open = () => {};
+  await app.document.getElementById("startBtn").dispatch("click");
+  app.sockets[0].readyState = 3;
+  await app.context.onmessage({data:{pluginMessage:{type:"SEND_JSON",payload:{nodes:[{id:"A",name:"Original"}]}}}});
+  app.run('currentOverview.activeSessionId="9"');
+  app.document.getElementById("toggle").checked = false;
+  app.run("connectWebSocket()");
+  app.sockets.at(-1).onopen();
+  const request = app.sockets.at(-1).sent.find((message) => message.type === "START_SIM");
+  assert.equal(request.session_id, "3");
+  assert.equal(request.visualization, true);
+});
+
+test("export failures restore all simulation controls", async () => {
+  const app = ui();
+  await app.document.getElementById("startBtn").dispatch("click");
+  await app.context.onmessage({data:{pluginMessage:{type:"EXPORT_ERROR",error:"Element removed"}}});
+  assert.equal(app.document.getElementById("toggle").disabled, false);
+  assert.equal(app.document.getElementById("backBtn").classList.contains("hidden"), false);
+  assert.equal(app.document.getElementById("lizardVideo").paused, true);
+});
+
+test("disconnecting an active simulation restores controls without silently rerunning it", async () => {
+  const app = ui();
+  app.run('currentOverview={activeSessionId:"1",sessions:[]}');
+  await app.document.getElementById("startBtn").dispatch("click");
+  await app.context.onmessage({data:{pluginMessage:{type:"SEND_JSON",payload:{nodes:[{id:"A",name:"A"}]}}}});
+  app.sockets[0].readyState = 3;
+  app.sockets[0].onclose();
+  assert.equal(app.document.getElementById("startBtn").disabled, false);
+  assert.equal(app.document.getElementById("toggle").disabled, false);
+  app.run("connectWebSocket()");
+  app.sockets.at(-1).onopen();
+  assert.equal(app.sockets.at(-1).sent.some((message) => message.type === "START_SIM"), false);
+});
