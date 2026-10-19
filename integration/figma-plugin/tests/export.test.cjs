@@ -54,6 +54,21 @@ test("retains repeated selections in the export", async () => {
   assert.deepEqual(Array.from(result[0].normalizedCenter), [0.2, 0.2]);
 });
 
+test("cleanup preserves selection changes during a pending node lookup", async () => {
+  const { context } = plugin();
+  let finishLookup;
+  context.figma.getNodeByIdAsync = (id) => {
+    assert.equal(id, "A");
+    return new Promise((resolve) => { finishLookup = resolve; });
+  };
+  const cleanup = vm.runInContext('clickPath.push({id:"A",name:"A"}); cleanupClickPath()', context);
+  assert.equal(typeof finishLookup, "function");
+  vm.runInContext('clickPath.length = 0; clickPath.push({id:"B",name:"B"})', context);
+  finishLookup({ id: "A" });
+  await cleanup;
+  assert.deepEqual(Array.from(vm.runInContext("clickPath.map((entry) => entry.id)", context)), ["B"]);
+});
+
 test("rejects missing screen geometry instead of simulating a center tap", () => {
   const { context } = plugin();
   context.node = { ...fixtures().node, parent: { type: "PAGE" } };

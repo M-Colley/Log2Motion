@@ -144,7 +144,11 @@ class Log2Motion:
                 frames.extend(self.frames.pop(key)["frames"])
         key = f"episode_{first_episode}"
         self.results[key] = combined
-        self.episode_info[key] = dict(outcome, phases=phases)
+        self.episode_info[key] = dict(
+            outcome, phases=phases,
+            truncated=bool(outcome.get("truncated", False) or any(
+                phase.get("truncated", False) for phase in phases)),
+        )
         if self.collect_frames:
             self.frames[key] = {"frames": frames, "time": elapsed}
         self.episode_counter = first_episode + 1

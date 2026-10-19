@@ -215,6 +215,31 @@ def test_default_replay_groups_release_phases_into_one_episode_per_gesture(env, 
         assert len(metadata["phases"]) == (2 if gesture == "repeat" else 3)
 
 
+def test_grouped_swipe_retains_initial_reach_timeout_after_successful_drag():
+    replay = object.__new__(Log2Motion)
+    replay.collect_frames = False
+    replay.frames = {}
+    replay.episode_counter = 2
+    replay.results = {
+        "episode_0": [{"time": 0.002}, {"time": 0.004}],
+        "episode_1": [{"time": 0.002}, {"time": 0.004}],
+    }
+    replay.episode_info = {
+        "episode_0": {"is_success": False, "terminated": False, "truncated": True},
+        "episode_1": {"is_success": True, "terminated": True, "truncated": False},
+    }
+    outcome = dict(replay.episode_info["episode_1"], is_success=False)
+    replay._group_episodes(0, outcome)
+    grouped = replay.episode_info["episode_0"]
+    assert grouped["is_success"] is False
+    assert grouped["truncated"] is True
+    assert grouped["terminated"] is True
+    assert [phase["truncated"] for phase in grouped["phases"]] == [True, False]
+    assert replay.episode_counter == 1
+    np.testing.assert_allclose([sample["time"] for sample in replay.results["episode_0"]],
+                               [0.002, 0.004, 0.006, 0.008])
+
+
 @pytest.mark.parametrize("condition", ["fatigue", "sarcopenia", "reafferentation"])
 def test_muscle_conditions_use_myo3_and_remain_finite(condition):
     env = Log2MotionEnv({"muscle_condition": condition})

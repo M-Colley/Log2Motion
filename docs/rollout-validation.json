@@ -1,6 +1,7 @@
 {
   "tested_at": "2026-10-19T23:42:57+02:00",
   "platform": "Windows-11-10.0.26300-SP0",
+  "source_commit": "cbdbf87c7e42943c4e66d44c5d52d177be2120a5",
   "python": "3.12.10",
   "versions": {
     "myosuite": "3.0.0",

@@ -133,6 +133,18 @@ def test_missing_legacy_outcomes_are_unknown_and_failed_run_has_lower_success_ra
     assert reports.outcome_success_rate({}) is None
 
 
+def test_summary_detects_timeout_in_earlier_legacy_grouped_phase():
+    simulation = results()
+    outcome = {"is_success": False, "terminated": True, "truncated": False,
+               "phases": [{"is_success": False, "terminated": False, "truncated": True},
+                          {"is_success": True, "terminated": True, "truncated": False}]}
+    simulation["episodes"] = {"0": outcome}
+    metrics = history.extract_summary(simulation)
+    assert metrics["outcome_summary"] == {"status": "failed", "total": 1,
+        "successful": 0, "failed": 1, "timed_out": 1, "unknown": 0}
+    assert metrics["episodes"]["0"]["outcome"] == outcome
+
+
 def test_downsampling_does_not_promote_other_screen_contact_to_button_contact():
     samples = results(1000)["results"]["0"]
     for point in samples:

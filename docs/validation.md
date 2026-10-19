@@ -1,4 +1,4 @@
-# Migration validation — 19 October 2026
+# Migration validation — 19–20 October 2026
 
 ## Runtime
 
@@ -35,6 +35,10 @@ newest compatible TypeScript 6 release is locked instead.
 - Python 3.15.0 passes all 90 tests in 63 seconds, with a clean dependency
   check. Its HDF5 read/write round trip, OSQP optimization solve, native
   compression, trained PPO loading, real rendering, and video export pass.
+- The final suite adds two grouped-timeout regressions: 92 tests total
+  (38 simulation, 49 bridge/history/PDF, five end-to-end). Python 3.12 passes
+  all 92 locally. Hosted Windows CI runs 90 because its two OpenGL checks
+  are covered by local Windows and the complete Linux matrix instead.
 - All five bundled policy archives load, predict 63 controls, and step the
   model with the original 74-value observation contract.
 - Gymnasium's environment checker, seeded reset/noise reproducibility,
@@ -57,8 +61,9 @@ newest compatible TypeScript 6 release is locked instead.
   clicks, results, history, and PDF export. Other bridge regressions cover
   malformed requests, timeouts, stderr pressure, session isolation, occurrence
   comparisons, chart limits/contact classification, and outcome reporting.
-- Nine plugin tests cover transformed coordinates, nested/rotated frames,
-  repeats, safe vector cleanup, bundled HTML syntax, and outcome messages.
+- Ten plugin tests cover transformed coordinates, nested/rotated frames,
+  repeats, selection changes during pending lookups, safe vector cleanup,
+  bundled HTML syntax, and outcome messages.
   Type checking, build, ESLint, and `npm audit` pass with no reported npm
   vulnerabilities.
 - Ruff, dependency compatibility, lock freshness, and whitespace checks pass.

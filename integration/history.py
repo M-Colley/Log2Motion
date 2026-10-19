@@ -308,7 +308,12 @@ def summarize_outcomes(sim_data):
             summary["successful"] += 1
         else:
             summary["failed"] += 1
-            if outcome.get("truncated"):
+            # Older grouped episodes sometimes retained only the final phase's
+            # flag, even when an earlier reach/drag phase had timed out.
+            if outcome.get("truncated") or any(
+                isinstance(phase, dict) and phase.get("truncated")
+                for phase in (outcome.get("phases") or [])
+            ):
                 summary["timed_out"] += 1
     if summary["failed"]:
         status = "partial_failure" if summary["successful"] or summary["unknown"] else "failed"
