@@ -1,0 +1,16 @@
+.git
+.venv
+.upstream
+**/__pycache__
+.pytest_cache
+.ruff_cache
+runtime
+videos
+teaser.png
+integration
+integration.zip
+docs/figma-plugin-bugs.md
+docs/additional-bug-audit.md
+tests/test_figma_integration.py
+tests/test_audit_regressions.py
+scripts/smoke_bridge.py

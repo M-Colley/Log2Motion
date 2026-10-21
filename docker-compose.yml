@@ -1,0 +1,13 @@
+name: log2motion
+services:
+  simulation:
+    build: .
+    image: log2motion:myosuite3
+    init: true
+    volumes:
+      - ./runtime:/data
+    command:
+      - --actions-file
+      - /data/actions.json
+      - --video
+      - /data/replay.mp4

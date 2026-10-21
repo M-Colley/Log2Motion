@@ -1,0 +1,772 @@
+{
+  "tested_at": "2026-10-19T23:42:57+02:00",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "source_revision_note": "Historical core rollout; the source and policy SHA-256 hashes below identify the tested inputs.",
+  "python": "3.12.10",
+  "versions": {
+    "myosuite": "3.0.0",
+    "mujoco": "3.16.0",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "gymnasium": "1.2.3",
+    "stable-baselines3": "2.9.0",
+    "torch": "2.14.1"
+  },
+  "config": {
+    "seed": 42,
+    "deterministic_policy": true,
+    "motor_noise": "default seeded motor noise enabled",
+    "resting_position": true,
+    "button_radius_metres": 0.005,
+    "rendering": false
+  },
+  "source_sha256": {
+    "environment/log2motion.py": "7e7f396ac3ac4e49e70eddf5d9d9b56c43cf4edd02f69577784be1e483931ff4",
+    "environment/log2motion_env.py": "d349b7c4fec1d14f766286e0c55ae7ca39d72f8ffe058718f8f24ff2f0659f90",
+    "environment/myosuite_custom/env_base_custom.py": "d3fd9b78b6d094a18a4f4efc36492980920a102717f26faac520f662a360ac86",
+    "environment/myosuite_custom/base_v0_custom.py": "1cafa1a116e6cd3b52f8174880229217bddb9ce306c8810af5c02d8676e9d505",
+    "environment/scene/log2motion_scene.xml": "8dae151da68e15074c132a915717faec36123931dda20d4930184d060684eed9",
+    "policies/normal.zip": "e33cda10988ffd39f8c451029f1b32f8f1c36e15cedf8a75b179e3c0c37a9fd9",
+    "policies/swipe.zip": "9effcdd024deeca466b73b8f823aba58da89208dd203af154f4824eed8cfc680"
+  },
+  "contact_definitions": {
+    "target_contact_samples": "Telemetry code 1 during an on-screen gesture; release/virtual targets and wrong-screen code 2 excluded.",
+    "target_touch_sensor_samples": "Positive MuJoCo target touch sensor during an on-screen phase, distinct from proximity-only target detection.",
+    "target_collision_samples": "MuJoCo contact pair between target geom and index-finger midph2/distph2 during an on-screen phase.",
+    "target_penetrating_contact_samples": "At least one index-finger/target contact pair has nonpositive signed distance during an on-screen phase.",
+    "target_contact_force_samples": "At least one index-finger/target contact pair has normal constraint force > 1e-8 N during an on-screen phase.",
+    "non_target_screen_contact_samples": "Telemetry code 2 during an on-screen gesture; excludes target contact and includes expected screen contact along a swipe path.",
+    "wrong_screen_samples": "Telemetry code 2 during a tap/initial reach, excluding expected screen contact in the swipe phase."
+  },
+  "cases": [
+    {
+      "name": "tap_y0.2_x0.2",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.2,
+            0.2
+          ],
+          "yx_lift": [
+            0.2,
+            0.2
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.2480000000000002
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.598,
+          "samples": 299,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.248,
+          "target_touch_sensor_samples": 1,
+          "target_collision_samples": 2,
+          "target_penetrating_contact_samples": 1,
+          "target_contact_force_samples": 2,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.020_-0.044_1609": [
+              0.020449999999999996,
+              -0.294,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 4.08
+    },
+    {
+      "name": "tap_y0.2_x0.5",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.2,
+            0.5
+          ],
+          "yx_lift": [
+            0.2,
+            0.5
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.2420000000000002
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.592,
+          "samples": 296,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.242,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 3,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 3,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_-0.044_4719": [
+              0.000449999999999999,
+              -0.294,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.387
+    },
+    {
+      "name": "tap_y0.2_x0.8",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.2,
+            0.8
+          ],
+          "yx_lift": [
+            0.2,
+            0.8
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.3980000000000003
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.748,
+          "samples": 374,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.398,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 6,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 6,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_-0.020_-0.044_1631": [
+              -0.019550000000000005,
+              -0.294,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.583
+    },
+    {
+      "name": "tap_y0.5_x0.2",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.2
+          ],
+          "yx_lift": [
+            0.5,
+            0.2
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.45200000000000035
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.802,
+          "samples": 401,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.452,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 4,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 4,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.020_-0.000_5106": [
+              0.020449999999999996,
+              -0.25025,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.693
+    },
+    {
+      "name": "tap_y0.5_x0.5",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.5
+          ],
+          "yx_lift": [
+            0.5,
+            0.5
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.3880000000000003
+            },
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.738,
+          "samples": 369,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.388,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 3,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 3,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_-0.000_6957": [
+              0.000449999999999999,
+              -0.25025,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 2.13
+    },
+    {
+      "name": "tap_y0.5_x0.8",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.8
+          ],
+          "yx_lift": [
+            0.5,
+            0.8
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.5700000000000004
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.92,
+          "samples": 460,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.57,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 2,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 2,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_-0.020_-0.000_7903": [
+              -0.019550000000000005,
+              -0.25025,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.572
+    },
+    {
+      "name": "tap_y0.8_x0.2",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.8,
+            0.2
+          ],
+          "yx_lift": [
+            0.8,
+            0.2
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.5660000000000004
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.916,
+          "samples": 458,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.566,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 15,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 15,
+          "non_target_screen_contact_samples": 7,
+          "wrong_screen_samples": 7,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.020_0.045_9437": [
+              0.020449999999999996,
+              -0.20525,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 0.987
+    },
+    {
+      "name": "tap_y0.8_x0.5",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.8,
+            0.5
+          ],
+          "yx_lift": [
+            0.8,
+            0.5
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.5760000000000004
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.926,
+          "samples": 463,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.576,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 18,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 18,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_0.045_9712": [
+              0.000449999999999999,
+              -0.20525,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 0.955
+    },
+    {
+      "name": "tap_y0.8_x0.8",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.8,
+            0.8
+          ],
+          "yx_lift": [
+            0.8,
+            0.8
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.6060000000000004
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.956,
+          "samples": 478,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.606,
+          "target_touch_sensor_samples": 1,
+          "target_collision_samples": 6,
+          "target_penetrating_contact_samples": 1,
+          "target_contact_force_samples": 6,
+          "non_target_screen_contact_samples": 4,
+          "wrong_screen_samples": 4,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_-0.020_0.045_9735": [
+              -0.019550000000000005,
+              -0.20525,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 0.955
+    },
+    {
+      "name": "repeat_center",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.5
+          ],
+          "yx_lift": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.5
+          ],
+          "yx_lift": [
+            0.5,
+            0.5
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.3880000000000003
+            },
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.738,
+          "samples": 369,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.388,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 3,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 3,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_-0.000_6957": [
+              0.000449999999999999,
+              -0.25025,
+              1.056
+            ]
+          }
+        },
+        {
+          "episode_id": "episode_1",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.1480000000000001
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 0.498,
+          "samples": 249,
+          "target_contact_samples": 1,
+          "first_target_contact_seconds": 0.148,
+          "target_touch_sensor_samples": 0,
+          "target_collision_samples": 5,
+          "target_penetrating_contact_samples": 0,
+          "target_contact_force_samples": 5,
+          "non_target_screen_contact_samples": 0,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_-0.000_6957": [
+              0.000449999999999999,
+              -0.25025,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.123
+    },
+    {
+      "name": "swipe_center_down",
+      "actions": [
+        {
+          "action_type": "ActionType.DUAL_POINT",
+          "yx_touch": [
+            0.5,
+            0.5
+          ],
+          "yx_lift": [
+            0.7,
+            0.5
+          ]
+        }
+      ],
+      "episodes": [
+        {
+          "episode_id": "episode_0",
+          "is_success": true,
+          "terminated": true,
+          "truncated": false,
+          "phases": [
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.3880000000000003
+            },
+            {
+              "is_success": true,
+              "terminated": true,
+              "truncated": false,
+              "duration": 0.45200000000000035
+            },
+            {
+              "is_success": false,
+              "terminated": false,
+              "truncated": false,
+              "duration": 0.35000000000000026
+            }
+          ],
+          "duration_seconds": 1.19,
+          "samples": 595,
+          "target_contact_samples": 2,
+          "first_target_contact_seconds": 0.388,
+          "target_touch_sensor_samples": 1,
+          "target_collision_samples": 78,
+          "target_penetrating_contact_samples": 1,
+          "target_contact_force_samples": 78,
+          "non_target_screen_contact_samples": 206,
+          "wrong_screen_samples": 0,
+          "finite_values": true,
+          "strictly_increasing_time": true,
+          "last_contact_code": 0,
+          "resolved_targets": {
+            "button_0.000_-0.000_6957": [
+              0.000449999999999999,
+              -0.25025,
+              1.056
+            ],
+            "button_0.000_0.030_1543": [
+              0.000449999999999999,
+              -0.22025,
+              1.056
+            ]
+          }
+        }
+      ],
+      "wall_seconds": 1.14
+    }
+  ],
+  "summary": {
+    "cases": 11,
+    "gestures": 12,
+    "successful_gestures": 12,
+    "failed_gestures": 0,
+    "all_values_finite": true,
+    "all_times_increasing": true,
+    "gestures_with_target_telemetry_contact": 12,
+    "gestures_with_target_sensor_contact": 3,
+    "gestures_with_target_collision_contact": 12,
+    "gestures_with_target_penetrating_contact": 3,
+    "gestures_with_target_contact_force": 12
+  },
+  "limitations": [
+    "Nine interior target positions, one repeated tap case, and one swipe at seed 42 do not establish all-target or all-seed reliability.",
+    "Success follows the existing environment target detector. Independently measured positive index-finger/target normal constraint force occurred in every tested gesture; the tiny target touch sensor and penetrating contacts occurred in three gestures.",
+    "This artifact validates MuJoCo policy rollouts; it does not validate real human biomechanics or a physical Android device."
+  ]
+}

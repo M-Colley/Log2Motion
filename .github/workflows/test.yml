@@ -1,0 +1,44 @@
+name: Test
+on: [push, pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  python:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13', '3.14', '3.15']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.13.2'
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglfw3 xvfb
+      - run: uv sync --locked
+      - run: uv pip check
+      - run: uv run ruff check .
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a uv run pytest -q
+        env:
+          MUJOCO_GL: glfw
+          LIBGL_ALWAYS_SOFTWARE: '1'
+      - if: runner.os == 'Windows'
+        # Hosted Windows runners have no OpenGL driver. Linux and local
+        # Windows desktop runs cover these two rendering checks.
+        run: uv run pytest -q -m "not rendering"
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t log2motion:test .
+      - run: docker run --init --name log2motion-test log2motion:test python /app/scripts/smoke_cli.py
+      - if: failure()
+        run: docker logs log2motion-test
+      - if: always()
+        run: docker rm --force log2motion-test

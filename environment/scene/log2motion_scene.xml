@@ -5,8 +5,8 @@
     <!--        <visual>-->
 <!--            <global offwidth="1920" offheight="1080"/>-->
 <!--        </visual>-->
-    <include file="/simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
-    <include file="/simhive/myo_sim/scene/myosuite_scene.xml"/>
+    <include file="simhive/myo_sim/arm/assets/myoarm_assets.xml"/>
+    <include file="simhive/myo_sim/scene/myosuite_scene.xml"/>
     <compiler meshdir='./simhive/myo_sim/' texturedir='./simhive/myo_sim/'/>
     <asset>
         <texture name="smartphone_texture"
@@ -35,7 +35,7 @@
         <!-- ======= MyoArm ======= -->
         <geom name="body" type="mesh" mesh="body_norighthand" euler="0 0 3.14" contype="0" conaffinity="0"/>
         <body name="full_body" pos="-.025 0.1 1.40">
-            <include file="/simhive/myo_sim/arm/assets/myoarm_body.xml"/>
+            <include file="simhive/myo_sim/arm/assets/myoarm_body.xml"/>
             <camera name="left_eye" mode="targetbody" target="smartphone" pos=".063 -0.08 .28" quat="1 0 0 0"/>
             <camera name="right_eye" mode="targetbody" target="smartphone" pos=".0 -0.08 .28" quat="1 0 0 0"/>
         </body>
